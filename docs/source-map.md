@@ -4,7 +4,7 @@ Every function in the generated firmware source (`docs/source-build.md`), one li
 grouped by source file (`src/files.tsv`). Names are ours: the image has no symbols.
 A name followed by `(?)` in the purpose is a best guess from the code alone.
 
-Coverage: 851 functions, 851 named, 851 with a purpose. Named data labels are listed in *Data* at the end.
+Coverage: 826 functions, 826 named, 826 with a purpose. Named data labels are listed in *Data* at the end.
 
 App files are app code between two linker fills (`docs/source-build.md` *Input
 sections*), named for what they hold. Thunks (`*_thunk`) are the

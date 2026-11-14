@@ -9,11 +9,13 @@
 #define USB_OTG_FS_CORE
 #define USE_DEVICE_MODE
 
-/* FIFO sizes in words. Not read back from the image yet: no linked function uses them. */
-#define RX_FIFO_FS_SIZE   128
-#define TX0_FIFO_FS_SIZE   32
-#define TX1_FIFO_FS_SIZE  128
-#define TX2_FIFO_FS_SIZE   32
+/* FIFO sizes in words, from the stock image: the inlined USB_OTG_CoreInitDev at 0x0800DA06
+ * writes GRXFSIZ 0x40, DIEPTXF0 0x00400040, DIEPTXF1 0x00400080, DIEPTXF2 0x003000C0 and
+ * DIEPTXF3 0x000000F0 (depth << 16 | start). No linked function uses them. */
+#define RX_FIFO_FS_SIZE    64
+#define TX0_FIFO_FS_SIZE   64
+#define TX1_FIFO_FS_SIZE   64
+#define TX2_FIFO_FS_SIZE   48
 #define TX3_FIFO_FS_SIZE    0
 
 /* no VBUS_SENSING_ENABLED: the stock USBD_DCD_INT_cb table (0x0802B67C in the .data load

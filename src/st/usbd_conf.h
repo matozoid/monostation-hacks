@@ -7,7 +7,9 @@
 
 #define USBD_CFG_MAX_NUM      1
 #define USBD_ITF_MAX_NUM      1
-/* Not read back from the image yet: no linked function uses it. */
-#define USB_MAX_STR_DESC_SIZ  255
+/* From the stock image: USBD_StrDesc is at 0x20002517 and the next RAM object the code
+ * references is at 0x200025E0, so the buffer holds 198 to 201 bytes; 200 is the round
+ * value in that range. No linked function uses it. */
+#define USB_MAX_STR_DESC_SIZ  200
 
 #endif
