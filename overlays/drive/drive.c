@@ -17,18 +17,12 @@
 #define KNOB_MAX        127
 #define UNITY           16      /* boost factors are in sixteenths */
 
-#define MS_PREFIX_LEN   6       /* F0 00 20 29 01 61 */
-#define CMD_DRIVE       0x7c    /* byte 6; unused by the stock dispatcher */
-
-/* Defaults, chosen by ear on the unit (2026-10-28). */
-#define DEFAULT_OVERDRIVE  48   /* x3 */
-#define DEFAULT_DISTORTION 48   /* x3 */
-#define DEFAULT_FLAGS      FLAG_DIST_FULL
-#define DEFAULT_OD_FLOOR   400
-#define DEFAULT_DIST_SHAPE 8
-
-#define FLAG_DIST_FULL  0x01    /* every distortion stage the type drives gets the full swing */
-#define FLAG_OD_STOCK   0x02    /* leave the overdrive CV 0x20003378 stock */
+/* Chosen by ear on the unit (2026-10-28), tuned then through a SysEx message this release
+ * no longer has. Boost factors are in sixteenths. */
+#define OVERDRIVE       48      /* x3 */
+#define DISTORTION      48      /* x3 */
+#define OD_FLOOR        400     /* 0x20003378 at full Overdrive */
+#define DIST_SHAPE      8       /* types 1 and 3: halfway between even and the stock shape */
 
 struct boosted {
     uint8_t entry;              /* DAC table entry */
@@ -52,48 +46,17 @@ static const struct boosted od_cv = {27, (uint16_t *)0x20003378};
 #define MIXER_CELLS     (sizeof mixer / sizeof mixer[0])
 #define DIST_CELLS      (sizeof dist / sizeof dist[0])
 
-/* CCM (docs/hardware.md "Free RAM"): not cleared at boot, so it carries a magic word.
- * Kept clear of 0x10000000, which overlays/transpose and overlays/ledtest use. */
-#define STATE_MAGIC     0x33495244u /* "DRI3" */
+/* CCM (docs/hardware.md "Free RAM"): the boosted copies the DAC table points at. Kept
+ * clear of 0x10000000 (overlays/transpose, overlays/ledtest) and 0x10000800
+ * (overlays/randomise). Written every tick, so it needs no initialisation. */
 struct state {
-    uint32_t magic;
-    uint8_t overdrive;          /* boost factors, sixteenths */
-    uint8_t distortion;
-    uint8_t flags;
-    uint16_t od_floor;          /* 0x20003378 at full Overdrive */
-    uint8_t dist_shape;         /* types 1 and 3, sixteenths (bend) */
-    uint16_t mixer[MIXER_CELLS]; /* boosted copies the DAC table points at */
+    uint16_t mixer[MIXER_CELLS];
     uint16_t dist[DIST_CELLS];
     uint16_t od_cv;
 };
 #define STATE (*(volatile struct state *)0x10000400)
 
-static const uint8_t ms_prefix[MS_PREFIX_LEN] = {0xf0, 0x00, 0x20, 0x29, 0x01, 0x61};
-
-void stock_sysex_dispatch(unsigned port, const uint8_t *msg, unsigned len);
 void stock_synth_engine_update(void);
-
-/* F0 00 20 29 01 61 7C <overdrive> <distortion> [<flags> [<floor hi> <floor lo> [<shape>]]] F7 */
-void sysex_dispatch(unsigned port, const uint8_t *msg, unsigned len)
-{
-    unsigned i;
-
-    for (i = 0; i < MS_PREFIX_LEN && i < len; i++)
-        if (msg[i] != ms_prefix[i])
-            break;
-    if (i < MS_PREFIX_LEN || len < 10 || msg[6] != CMD_DRIVE) {
-        stock_sysex_dispatch(port, msg, len);
-        return;
-    }
-    STATE.overdrive = msg[7];
-    STATE.distortion = msg[8];
-    if (len >= 11)
-        STATE.flags = msg[9];
-    if (len >= 13)
-        STATE.od_floor = (uint16_t)(msg[10] << 7 | msg[11]) & CV_MAX;
-    if (len >= 14)
-        STATE.dist_shape = msg[12];
-}
 
 /* The rest value minus `distance` (how far the stock code moved the CV) × num / den,
  * clamped to the DAC range. */
@@ -156,21 +119,13 @@ void synth_engine_update(void)
     unsigned i;
 
     stock_synth_engine_update();
-    if (STATE.magic != STATE_MAGIC) {
-        STATE.overdrive = DEFAULT_OVERDRIVE;
-        STATE.distortion = DEFAULT_DISTORTION;
-        STATE.flags = DEFAULT_FLAGS;
-        STATE.od_floor = DEFAULT_OD_FLOOR;
-        STATE.dist_shape = DEFAULT_DIST_SHAPE;
-        STATE.magic = STATE_MAGIC;
-    }
     rest = CV_REST;
 
     /* synth_update_mixer scales every level by 32 + overdrive * 7/4 (32..254); stretch
      * only what the knob adds above 32. */
     knob = synth_param_get(PARAM_OVERDRIVE);
     scale = (((knob * 0x1c00000u) >> 24) + 0x20) & 0xff;
-    boosted = 32 + (scale - 32) * STATE.overdrive / UNITY;
+    boosted = 32 + (scale - 32) * OVERDRIVE / UNITY;
     for (i = 0; i < MIXER_CELLS; i++) {
         STATE.mixer[i] = stretch(rest, *mixer[i].stock, boosted, scale);
         DAC_TABLE[2 * mixer[i].entry] = (uint32_t)&STATE.mixer[i];
@@ -178,9 +133,8 @@ void synth_engine_update(void)
 
     /* From the stock value at knob 0 to the floor at full knob. */
     cv = *od_cv.stock;
-    if (!(STATE.flags & FLAG_OD_STOCK) && knob <= KNOB_MAX)
-        cv = (uint16_t)((int32_t)cv + ((int32_t)STATE.od_floor - (int32_t)cv) * (int32_t)knob
-                                      / KNOB_MAX);
+    if (knob <= KNOB_MAX)
+        cv = (uint16_t)((int32_t)cv + ((int32_t)OD_FLOOR - (int32_t)cv) * (int32_t)knob / KNOB_MAX);
     STATE.od_cv = cv;
     DAC_TABLE[2 * od_cv.entry] = (uint32_t)&STATE.od_cv;
 
@@ -190,12 +144,13 @@ void synth_engine_update(void)
     for (i = 0; i < DIST_CELLS; i++)
         if ((int16_t)*dist[i].stock < (int16_t)peak)
             peak = *dist[i].stock;
+    /* Every stage the type drives gets the full swing, so the three types stay distinct. */
     for (i = 0; i < DIST_CELLS; i++) {
         cv = *dist[i].stock;
-        if (STATE.flags & FLAG_DIST_FULL && (int16_t)cv < (int16_t)rest)
+        if ((int16_t)cv < (int16_t)rest)
             cv = peak;
-        STATE.dist[i] = type == 1 ? stretch(rest, cv, STATE.distortion, UNITY)
-                                  : bend(rest, cv, STATE.dist_shape, full);
+        STATE.dist[i] = type == 1 ? stretch(rest, cv, DISTORTION, UNITY)
+                                  : bend(rest, cv, DIST_SHAPE, full);
         DAC_TABLE[2 * dist[i].entry] = (uint32_t)&STATE.dist[i];
     }
 }

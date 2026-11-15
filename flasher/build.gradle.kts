@@ -37,4 +37,8 @@ kotlin {
 }
 
 // ktmidi's ALSA and RtMidi backends load native libraries through JavaCPP.
-tasks.withType<JavaExec>().configureEach { jvmArgs("--enable-native-access=ALL-UNNAMED") }
+// standardInput: jvmRun asks "Type yes" before flashing; Gradle gives a JavaExec no stdin by default.
+tasks.withType<JavaExec>().configureEach {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    standardInput = System.`in`
+}

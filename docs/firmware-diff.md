@@ -6,7 +6,7 @@ The flasher page (#63) must not ship Novation's firmware. It ships a diff per bu
 modified `.syx` from it before flashing.
 
 Tools: `tools/fwdiff.py` (reference) and `flasher/.../FirmwareDiff.kt` (the page and the
-JVM tests). Both rebuild `mods-756.syx` byte for byte (`tests/test_fwdiff.py`,
+JVM tests). Both rebuild `mods-750.syx` byte for byte (`tests/test_fwdiff.py`,
 `FirmwareDiffFileTest`).
 
 ## Format `fwdiff 1`
@@ -39,18 +39,18 @@ longest match of at least 16 bytes anywhere in stock (moved code or tables), els
 Shorter matches stay data: they are coincidences, not stock code.
 
 ```
-python3 tools/fwdiff.py make private/firmware/monostation-firmware-800.syx private/firmware/mods-756.syx \
-    flasher/src/jsMain/resources/builds/mods-756.fwdiff
-python3 tools/fwdiff.py show flasher/src/jsMain/resources/builds/mods-756.fwdiff
+python3 tools/fwdiff.py make private/firmware/monostation-firmware-800.syx private/firmware/mods-750.syx \
+    flasher/src/jsMain/resources/builds/mods-750.fwdiff
+python3 tools/fwdiff.py show flasher/src/jsMain/resources/builds/mods-750.fwdiff
 ```
 
-`mods-756` (randomise + transpose + drive overlays): 33 ops, 129,762 bytes copied in place,
-16 moved (an FF run, padding), 3,342 bytes of data. The data is our bytes at the hook sites plus
+`mods-750` (randomise + transpose + drive overlays): 32 ops, 129,761 bytes copied in place,
+none moved, 3,807 bytes of data. The data is our bytes at the hook sites plus
 our code after the image; it holds no relocated stock code.
 
-`mods-756.syx` is built with
-`fwsrc.py generate private/firmware/monostation-firmware-800.bin OUT --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 756`,
-`fwsrc.py build`, `bin2syx.py --version 756`.
+`mods-750.syx` is built with
+`fwsrc.py generate private/firmware/monostation-firmware-800.bin OUT --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 750`,
+`fwsrc.py build`, `bin2syx.py --version 750`.
 
 When a new build goes on the page, add its `.fwdiff` here and a `Build` entry in
 `flasher/src/jsMain/kotlin/flasher/Main.kt`.

@@ -11,7 +11,7 @@ import fwdiff  # noqa: E402
 import fwsyx  # noqa: E402
 
 FIRMWARE_800 = ROOT / "private" / "firmware" / "monostation-firmware-800.syx"
-MODS_756 = ROOT / "private" / "firmware" / "mods-756.syx"
+MODS_750 = ROOT / "private" / "firmware" / "mods-750.syx"
 BUILDS = ROOT / "flasher" / "src" / "jsMain" / "resources" / "builds"
 
 
@@ -66,10 +66,10 @@ class ShippedBuildsTest(unittest.TestCase):
                 syx = fwdiff.apply(stock, diff.read_text())
                 self.assertEqual(fwsyx.parse_start(fwsyx.split_messages(syx)[0])[0], fwsyx.MONOSTATION_PRODUCT_ID)
 
-    @unittest.skipUnless(MODS_756.exists(), "needs mods-756.syx")
-    def test_mods_756_is_byte_exact(self):
-        syx = fwdiff.apply(FIRMWARE_800.read_bytes(), (BUILDS / "mods-756.fwdiff").read_text())
-        self.assertEqual(syx, MODS_756.read_bytes())
+    @unittest.skipUnless(MODS_750.exists(), "needs mods-750.syx")
+    def test_mods_750_is_byte_exact(self):
+        syx = fwdiff.apply(FIRMWARE_800.read_bytes(), (BUILDS / "mods-750.fwdiff").read_text())
+        self.assertEqual(syx, MODS_750.read_bytes())
 
 
 if __name__ == "__main__":

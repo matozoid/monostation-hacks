@@ -1,4 +1,6 @@
-/* #13: context-sensitive Mutate, and #45: Mutate in the Patches view nudges the patch.
+/* #13: context-sensitive Mutate, #45: Mutate in the Patches view nudges the patch, which
+ * glides to its new values, and #60: every Mutate is mild, moving values from where they
+ * are, further with each press of a quick burst.
  * The offsets are those stock ui_button_event uses (docs/source-map.md ui_button_event;
  * Shift+Oct pattern transpose walks the same steps). */
 #include <firmware.h>
@@ -53,6 +55,27 @@ static unsigned random_below(unsigned n)
     return rng_read() % n;
 }
 
+/* +-(1..level), each sign equally likely. */
+static int random_offset(unsigned level)
+{
+    int n = (int)random_below(level) + 1;
+    return random_below(2) ? n : -n;
+}
+
+static int clamp(int value, int lo, int hi)
+{
+    return value < lo ? lo : value > hi ? hi : value;
+}
+
+#define MILLISECONDS    (*(volatile uint32_t *)0x200007e4) /* TIM5 ch3 1 ms count */
+
+/* #60: presses closer together than BURST_GAP_MS form a burst; each press in it moves
+ * values further, up to LEVELS. Tuned on the unit. */
+#define BURST_GAP_MS    500
+#define LEVELS          4
+/* #45: a patch Mutate glides each changed param to its new value over GLIDE_MS. */
+#define GLIDE_MS        500
+
 /* The distinct notes on the Expand view's pads: the current scale over its four octaves
  * (two for Chromatic), relative to C; the router adds the root note on playback. */
 static unsigned expand_notes(void *keyboard_view, uint8_t *notes)
@@ -64,30 +87,57 @@ static unsigned expand_notes(void *keyboard_view, uint8_t *notes)
         unsigned i = 0;
         while (i < count && notes[i] != note)
             i++;
-        if (note && i == count)
-            notes[count++] = note;
+        if (note && i == count) {
+            /* Insert sorted, so a nudge can step to the next note of the scale. */
+            while (i && notes[i - 1] > note) {
+                notes[i] = notes[i - 1];
+                i--;
+            }
+            notes[i] = note;
+            count++;
+        }
     }
     return count;
 }
 
-static void randomise(struct step *step, unsigned subview, unsigned max_gate,
-                      const uint8_t *notes, unsigned note_count)
+/* Index of the pad level nearest to value (glide and velocity pads). */
+static unsigned pad_index(unsigned value)
+{
+    unsigned best = 0;
+    for (unsigned i = 1; i < 16; i++)
+        if ((pad_levels[i] > value ? pad_levels[i] - value : value - pad_levels[i]) <
+            (pad_levels[best] > value ? pad_levels[best] - value : value - pad_levels[best]))
+            best = i;
+    return best;
+}
+
+/* #60: move one step's field a little from where it is; level 1..LEVELS. */
+static void nudge_step(struct step *step, unsigned subview, unsigned level, unsigned max_gate,
+                       const uint8_t *notes, unsigned note_count)
 {
     switch (subview) {
-    case SUBVIEW_EXPAND:
-        step->note = notes[random_below(note_count)];
-        break;
-    case SUBVIEW_VELOCITY: {
-        /* The velocity view's pad levels: (pad + 1) * 8, 127 for the top pad. */
-        unsigned level = random_below(16) + 1;
-        step->velocity = level == 16 ? 127 : level * 8;
+    case SUBVIEW_EXPAND: {
+        /* A nearby note of the scale: notes are sorted, so step the index. */
+        unsigned i = 0;
+        while (i + 1 < note_count && notes[i] < step->note)
+            i++;
+        step->note = notes[clamp((int)i + random_offset(level), 0, (int)note_count - 1)];
         break;
     }
-    case SUBVIEW_GATE:
-        step->gate = random_below(max_gate) + 1;
+    case SUBVIEW_VELOCITY:
+        /* The velocity view's pad levels: (pad + 1) * 8, 127 for the top pad. */
+        step->velocity = pad_levels[clamp((int)pad_index(step->velocity) + random_offset(level), 1, 15)];
         break;
+    case SUBVIEW_GATE: {
+        int unit = (int)max_gate / 8 + 1;
+        step->gate = clamp((int)step->gate + unit * random_offset(level), 1, (int)max_gate);
+        break;
+    }
     case SUBVIEW_GLIDE:
-        step->glide = random_below(2) ? pad_levels[random_below(15) + 1] : 0xff;
+        if (random_below(8) < level)            /* on/off flips with chance level/8 */
+            step->glide = step->glide == 0xff ? pad_levels[random_below(4 * level) % 15 + 1] : 0xff;
+        else if (step->glide != 0xff)
+            step->glide = pad_levels[clamp((int)pad_index(step->glide) + random_offset(level), 1, 15)];
         break;
     }
 }
@@ -162,29 +212,104 @@ static const struct param_rule patch_rules[] = {
     DEPTH(0x49,  64,  40, 6), DEPTH(0x4a,  64,  63, 6),
 };
 
-/* A small random step away from the param's current value. */
-static unsigned nudge_param(const struct param_rule *rule, unsigned value)
+enum { RULES = sizeof patch_rules / sizeof patch_rules[0] };
+
+/* A small random step away from the param's current value, bigger with the level: a
+ * continuous param changes with chance level/4, by up to +-(span * level / 16 + 1); a
+ * switch with chance level/16. */
+static unsigned nudge_param(const struct param_rule *rule, unsigned value, unsigned level)
 {
     unsigned span = rule->hi - rule->lo;
     if (span == 0)
         return value;
     if (span < 8) {
-        if (random_below(8))
+        if (random_below(16) >= level)
             return value;
         if (random_below(8) < rule->rest)
             return rule->value;
         return rule->lo + random_below(span + 1);
     }
-    if (random_below(2) || (value == rule->value && random_below(8) < rule->rest))
+    if (random_below(4) >= level || (value == rule->value && random_below(8) < rule->rest))
         return value;
-    /* +-(span/8 + 1), never further out of lo..hi than the value already is. */
-    int step = span / 8 + 1;
+    /* Never further out of lo..hi than the value already is. */
+    int step = span * level / 16 + 1;
     int next = (int)value + (int)random_below(2 * step + 1) - step;
     if (next > rule->hi)
         next = (int)value > rule->hi ? (int)value : rule->hi;
     if (next < rule->lo)
         next = (int)value < rule->lo ? (int)value : rule->lo;
     return next;
+}
+
+/* CCM (docs/hardware.md "Free RAM"): not cleared at boot, so it carries a magic word.
+ * Clear of transpose (0x10000000) and drive (0x10000400). */
+#define STATE_MAGIC     0x444e5252u /* "RRND" */
+struct state {
+    uint32_t magic;
+    uint32_t last_press;        /* MILLISECONDS of the last Mutate */
+    uint8_t level;              /* of the current burst, 1..LEVELS */
+    uint8_t gliding;
+    uint32_t glide_start;
+    void *sink;                 /* param sink of the glide */
+    uint8_t active[RULES];      /* param still gliding: no knob has moved it */
+    uint8_t from[RULES], to[RULES], last[RULES];
+};
+#define STATE ((struct state *)0x10000800)
+
+static struct state *state(void)
+{
+    struct state *s = STATE;
+    if (s->magic != STATE_MAGIC) {
+        memset(s, 0, sizeof *s);
+        s->magic = STATE_MAGIC;
+    }
+    return s;
+}
+
+/* The level of this press: 1 after a pause, else one more than the last, up to LEVELS. */
+static unsigned press_level(void)
+{
+    struct state *s = state();
+    uint32_t now = MILLISECONDS;
+    if (now - s->last_press > BURST_GAP_MS || s->level == 0)
+        s->level = 1;
+    else if (s->level < LEVELS)
+        s->level++;
+    s->last_press = now;
+    return s->level;
+}
+
+static param_set_fn sink_set(void *sink)
+{
+    return **(param_set_fn **)sink;
+}
+
+/* #45: one glide step, from the 10 ms input task (where the pots set params too). A param
+ * whose live value isn't the one the glide last set was moved by hand: it drops out. */
+static void glide_tick(void)
+{
+    struct state *s = state();
+    if (!s->gliding)
+        return;
+    uint32_t elapsed = MILLISECONDS - s->glide_start;
+    if (elapsed >= GLIDE_MS) {
+        elapsed = GLIDE_MS;
+        s->gliding = 0;
+    }
+    for (unsigned i = 0; i < RULES; i++) {
+        if (!s->active[i])
+            continue;
+        unsigned id = patch_rules[i].id;
+        if (synth_param_get(id) != s->last[i]) {
+            s->active[i] = 0;
+            continue;
+        }
+        int value = s->from[i] + ((int)s->to[i] - (int)s->from[i]) * (int)elapsed / GLIDE_MS;
+        if (value != s->last[i]) {
+            sink_set(s->sink)(s->sink, id, value, SOURCE_PANEL);
+            s->last[i] = value;
+        }
+    }
 }
 
 /* Shared prelude of both Mutates: 1 when Shift + Mutate may act on the active view. */
@@ -206,20 +331,23 @@ static void clear_view_38(void *ui)
 }
 
 /* #45: in the Patches view, move the current patch a small random step, as if a few knobs
- * had been turned a little: the patch shows as edited and can be saved as usual. */
+ * had been turned a little: the patch shows as edited and can be saved as usual. Switches
+ * jump; the rest glide over GLIDE_MS. A press during a glide starts from where it is. */
 static int mutate_patch(void *ui)
 {
     if (FIELD(ui, UI_ACTIVE_VIEW, void *) != FIELD(ui, UI_PATCH_VIEW, void *))
         return 0;
     clear_view_38(ui);
+    unsigned level = press_level();
+    struct state *s = state();
+    s->gliding = 0;
     void *sink = FIELD(FIELD(ui, UI_FILTER_VIEW, void *), VIEW_PARAM_SINK, void *);
-    param_set_fn set = **(param_set_fn **)sink;
-    enum { RULES = sizeof patch_rules / sizeof patch_rules[0] };
-    uint8_t old[RULES], values[RULES];
+    uint8_t old[RULES], values[RULES], jump[RULES];
     unsigned cutoff = 0, shape = 0, key_track = 0, decay = 0, sustain = 0;
     for (unsigned i = 0; i < RULES; i++) {
         old[i] = synth_param_get(patch_rules[i].id);
-        values[i] = nudge_param(&patch_rules[i], old[i]);
+        values[i] = nudge_param(&patch_rules[i], old[i], level);
+        jump[i] = patch_rules[i].hi - patch_rules[i].lo < 8;
         switch (patch_rules[i].id) {
         case FILTER_CUTOFF: cutoff = i; break;
         case FILTER_SHAPE: shape = i; break;
@@ -229,8 +357,10 @@ static int mutate_patch(void *ui)
         }
     }
     /* A new filter shape loses the notes when the cutoff is far off: keep the band in the
-     * middle and the high pass low, both following the keys, and the low pass open. */
+     * middle and the high pass low, both following the keys, and the low pass open. These
+     * jump with the shape. */
     if (values[shape] != old[shape]) {
+        jump[cutoff] = jump[key_track] = 1;
         if (values[shape] == SHAPE_BAND_PASS) {
             values[cutoff] = 100 + random_below(101);
             values[key_track] = 5 + random_below(3);
@@ -245,9 +375,22 @@ static int mutate_patch(void *ui)
      * patch was already that short. */
     if (values[sustain] < 32 && values[decay] < 40 && !(old[sustain] < 32 && old[decay] < 40))
         values[decay] += 40;
-    for (unsigned i = 0; i < RULES; i++)
-        if (values[i] != old[i])
-            set(sink, patch_rules[i].id, values[i], SOURCE_PANEL);
+    for (unsigned i = 0; i < RULES; i++) {
+        s->active[i] = 0;
+        if (values[i] == old[i])
+            continue;
+        if (jump[i]) {
+            sink_set(sink)(sink, patch_rules[i].id, values[i], SOURCE_PANEL);
+        } else {
+            s->from[i] = s->last[i] = old[i];
+            s->to[i] = values[i];
+            s->active[i] = 1;
+        }
+    }
+    s->sink = sink;
+    s->glide_start = MILLISECONDS;
+    s->gliding = 1;
+    glide_tick();
     return 1;
 }
 
@@ -276,6 +419,7 @@ static int mutate_field(void *ui)
     }
 
     clear_view_38(ui);
+    unsigned level = press_level();
 
     void *steps_cell = FIELD(FIELD(mode_view, MV_TRACKS + 4 * track, void *), TRACK_STEPS, void *);
     struct step *steps = cell_value(steps_cell);
@@ -290,9 +434,10 @@ static int mutate_field(void *ui)
         }
     if (max_gate > 96)
         max_gate = 96;
+    /* The first press of a burst moves about half the notes, later ones all of them. */
     for (unsigned i = 0; i < 16; i++)
-        if (steps[i].note)
-            randomise(&steps[i], subview, max_gate, pitches, pitch_count);
+        if (steps[i].note && (level > 1 || random_below(2)))
+            nudge_step(&steps[i], subview, level, max_gate, pitches, pitch_count);
     /* One random note keeps the longest gate, so the range doesn't shrink press by press. */
     if (subview == SUBVIEW_GATE && notes) {
         unsigned keep = random_below(notes);
@@ -312,4 +457,13 @@ void ui_button_event(void *ui, unsigned button)
     if (button == BUTTON_MUTATE && mutate_allowed(ui) && (mutate_patch(ui) || mutate_field(ui)))
         return;
     stock_ui_button_event(ui, button);
+}
+
+/* #45: the 10 ms main-loop soft timer that scans the pots; the glide steps after it. */
+void stock_input_poll_task(unsigned index, unsigned missed, void *context);
+
+void input_poll_task(unsigned index, unsigned missed, void *context)
+{
+    stock_input_poll_task(index, missed, context);
+    glide_tick();
 }

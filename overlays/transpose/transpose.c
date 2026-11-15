@@ -32,11 +32,11 @@
 #define LAYOUT_ENTRIES  0xe0    /* up to the reverse table at +0xf4; unused entries are 0 */
 #define LAYOUT_ALIAS    0x180   /* per entry: second LED showing the same key, 0xff = none */
 
-/* Colour indices (palette at .data 0x200002a0). Osc 1 keys are magenta, Osc 2 green,
+/* Colour indices (palette at .data 0x200002a0, entries 0x00RRGGBB). Osc 1 keys are magenta, Osc 2 green,
  * sounding keys white, and the Note view's steps cyan. The palette's own animated entries
  * pulse too fast, so the keys blink between these and their stock colour. */
-#define COLOUR_RESET    0x07    /* yellow: the pattern's first note */
-#define COLOUR_TARGET   0x27    /* blue: the key the sequences are transposed to */
+#define COLOUR_RESET    0x07    /* cyan (0x00FFFF): the pattern's first note */
+#define COLOUR_TARGET   0x27    /* red (0xFF0000): the key the sequences are transposed to */
 #define BLINK_MS        400     /* each half of the blink */
 #define MILLISECONDS    (*(volatile uint32_t *)0x200007e4) /* TIM5 ch3 1 ms count */
 

@@ -27,37 +27,40 @@ project's commands and safety rules.
 ## Feature: context-sensitive Mutate (#13)
 
 Stock **Mutate** (Shift + Pattern Settings) shuffles whole steps. With this mod, Mutate
-in the views below changes only one property of the steps that hold a note: the rhythm
+in the views below nudges only one property of the steps that hold a note: the rhythm
 and everything else stay as they are.
 
 | View | Open with | Mutate now |
 |------|-----------|------------|
-| Velocity | Velocity | gives each note a random velocity from the velocity pads' levels |
-| Gate | Gate | gives each note a random length, from 1/6 step up to the longest gate already in the pattern; one note keeps that longest gate, so the range holds press after press |
-| Glide | Shift + Gate | half the notes get no glide, the others a random glide level 1–15 |
-| Expand | Shift + Note | gives each note a random pitch from the notes on the 32 Expand pads: the current scale and root over four octaves (two for Chromatic) |
+| Velocity | Velocity | moves velocities up or down by a pad level or a few |
+| Gate | Gate | makes notes a little longer or shorter, up to the longest gate already in the pattern; one note keeps that longest gate, so the range holds press after press |
+| Glide | Shift + Gate | moves glide amounts a little and now and then switches glide on or off |
+| Expand | Shift + Note | moves notes to nearby notes on the 32 Expand pads: the current scale and root over four octaves (two for Chromatic) |
+
+**Press harder by pressing quicker (#60).** One press is mild: about half the notes move
+one small step. Press again within half a second and every note moves, further each
+time, up to four levels. Pause, and the next press is mild again.
 
 Tips:
 
-- If no note is longer than one step, random gates go up to one step. For longer random
-  gates, first make one note as long as you want the maximum to be.
+- If no note is longer than one step, gates go up to one step. For longer gates, first
+  make one note as long as you want the maximum to be.
 - In Expand view the pattern is hidden: listen, or press Note to see the new notes.
 - Works on the Osc 1 and Osc 2 tracks. In the Note and Pattern Settings views, and on the
   Mod Seq track, Mutate behaves as stock.
 
-Firmware 1.2 is build 800 inside the firmware; this mod reports build **750**. That is
-below 800 on purpose: Components offers an update to any unit below 800, so it should
-offer to install stock 1.2 (from its code; not tried yet).
-
 ## Feature: patch randomiser (#45)
 
 Open the **Patches** view and press **Mutate** (Shift + Pattern Settings): the current
-patch takes a small random step, as if a few knobs had been turned a little. Press again
-to wander further.
+patch takes a small random step, as if a few knobs had been turned a little. The sound
+glides to the new setting over half a second instead of jumping. Press again to wander
+further.
 
-- About half the knobs move, each by up to an eighth of its range. Switches and
-  waveforms change only now and then, and mod-matrix routings that are off mostly stay
-  off.
+- One press moves about a quarter of the knobs, each by a sixteenth of its range or
+  less. Quick presses (under half a second apart) go up to four levels: at the top every
+  knob moves, by up to a quarter of its range. Switches and waveforms change only now and
+  then, and jump instead of gliding.
+- Turn a knob during the glide and the knob wins: that parameter stops gliding.
 
 Each step stays playable:
 
@@ -88,13 +91,25 @@ Transpose the playing sequence from the keys, the way many monosynth sequencers 
    track's pattern.
 3. Hold Shift and tap the key of the pattern's first note to go back.
 
-While you hold Shift, the key of the pattern's first note blinks yellow, and the key
-you transposed to blinks blue.
+While you hold Shift, the key of the pattern's first note blinks cyan, and the key
+you transposed to blinks red.
 
 The notes stay in the scale, and nothing is saved: the pattern itself doesn't change,
 and loading another session starts it untransposed.
-On its own this mod is `overlays/transpose` (build 751). To get both features in one
-firmware (build 752), see the quick start below.
+This mod is `overlays/transpose`.
+
+## Feature: stronger drive (#61)
+
+Overdrive and Distortion go further than stock: turned up, they clip harder and the
+three distortion types differ more. At 0 they sound as stock. This mod is
+`overlays/drive`.
+
+## Firmware versions
+
+Firmware 1.2 is build 800 inside the firmware. Our builds count up from **750**: each
+release takes the next number (750, 751, …), and the page shows which one it flashes.
+They stay below 800 on purpose: Components offers an update to any unit below 800, so
+it offers to put stock 1.2 back.
 
 ## What you need
 
@@ -115,29 +130,24 @@ firmware (build 752), see the quick start below.
 
 ## Quick start
 
-Build the modded firmware:
+The [flasher page](https://matozoid.github.io/monostation-hacks/) is the easy way. To
+build the modded firmware yourself (all mods; leave out an `--overlay` to drop one):
 
     python3 tools/syx2bin.py private/firmware/monostation-firmware-800.syx private/firmware/monostation-firmware-800.bin
-    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/rand --overlay overlays/randomise
-    python3 tools/fwsrc.py build build/rand build/rand/firmware.bin
-    python3 tools/bin2syx.py build/rand/firmware.bin private/firmware/randomise-750.syx --version 750
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/mods --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 750
+    python3 tools/fwsrc.py build build/mods build/mods/firmware.bin
+    python3 tools/bin2syx.py build/mods/firmware.bin private/firmware/mods-750.syx --version 750
 
-For both features (Mutate and live transpose) in one firmware, build 752:
+Flash it:
 
-    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/both --overlay overlays/randomise --overlay overlays/transpose --version 752
-    python3 tools/fwsrc.py build build/both build/both/firmware.bin
-    python3 tools/bin2syx.py build/both/firmware.bin private/firmware/mods-752.syx --version 752
-
-Flash it (or `private/firmware/mods-752.syx` for both features):
-
-    .venv/bin/python tools/flash.py private/firmware/randomise-750.syx
+    .venv/bin/python tools/flash.py private/firmware/mods-750.syx
 
 The flasher checks the file, then waits for the unit's bootloader:
 
 1. Switch the Mono Station off.
 2. Hold **Scales + Note + Velocity** and switch it on.
 3. The flasher sends the firmware, waits for the unit to restart and checks that it
-   reports the new version (750, or 752 for both).
+   reports the new version (750).
 
 Go back to stock firmware 1.2 at any time: connect the unit to Novation Components and
 accept its firmware update, or flash it the same way:
@@ -175,6 +185,8 @@ For owners:
 
 - [Official firmware versions](docs/firmware-versions.md): 1.0, 1.1 and 1.2, their build
   numbers and what each added.
+- [Release test](docs/release-test.md): what we check on a unit before a build goes on
+  the flasher page.
 - [Entering the bootloader by hand](docs/update-protocol.md#entering-the-bootloader-by-hand)
   and [Recovery](docs/update-protocol.md#recovery): bootloader mode, reading the version
   lights, and retrying an update that failed.

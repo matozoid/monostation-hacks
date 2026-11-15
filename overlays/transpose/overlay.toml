@@ -2,7 +2,7 @@
 # and tap a key. Both Osc tracks' sequences then play that many scale degrees away from
 # the first note of that track's pattern; tapping that note's key resets. The tapped key
 # doesn't sound, nothing is saved, and loading a session resets it. While Shift is held,
-# the reset key blinks yellow and the current transpose key blue.
+# the reset key blinks cyan and the current transpose key red.
 base = 800
 # Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
 version = 751
