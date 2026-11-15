@@ -189,7 +189,7 @@ For modders:
   [firmware container](docs/firmware-container.md): how firmware gets onto the unit.
 - [Binary patching](docs/patching.md), [SysEx handlers](docs/sysex-handlers.md),
   [firmware map](docs/firmware-map.md).
-- [GitHub issues](https://github.com/matozoid/novation_circuit_monostation_reverse_engineering/issues): feature work (`enhancement`) and open research (`research`).
+- [GitHub issues](https://github.com/matozoid/monostation-hacks/issues): feature work (`enhancement`) and open research (`research`).
 
 ## Tests
 

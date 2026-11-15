@@ -1,0 +1,48 @@
+# Build the flasher page (#63) and publish it on GitHub Pages.
+# The page holds no Novation bytes: users pick the stock firmware file themselves.
+name: Flasher page
+
+on:
+  push:
+    branches: [main]
+    paths: ["flasher/**", ".github/workflows/flasher-pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flasher
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v4
+      # Tests that need the private stock firmware skip themselves.
+      - run: ./gradlew jvmTest jsNodeTest jsBrowserDistribution
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: flasher/build/dist/js/productionExecutable
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
