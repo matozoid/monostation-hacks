@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mono Station Flasher</title>
+<style>
+  :root { --bg: #fafafa; --fg: #1d1d1f; --muted: #666; --ok: #17803d; --err: #b42318; --box: #fff; --line: #ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161618; --fg: #ececec; --muted: #9a9a9a; --ok: #4ade80; --err: #f87171; --box: #1f1f22; --line: #333; }
+  }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 24px 16px; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  p, li { color: var(--muted); }
+  section { background: var(--box); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 16px 0; }
+  h2 { font-size: 1rem; margin: 0 0 .5rem; }
+  button { font: inherit; padding: .5rem 1.25rem; border-radius: 6px; border: 0; background: #2563eb; color: #fff; cursor: pointer; }
+  button:disabled { background: #888; cursor: default; }
+  progress { width: 100%; height: 12px; }
+  #log { font: 13px/1.4 ui-monospace, monospace; max-height: 240px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ok { color: var(--ok); }
+  .error { color: var(--err); }
+  #file-info { overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Circuit Mono Station flasher</h1>
+  <p>Unofficial. Flashes a firmware <code>.syx</code> through the unit's bootloader over USB MIDI.
+    The bootloader itself is never written, so a failed update can always be retried.</p>
+  <p>Tested with Firefox, the supported browser. When you press Flash, Firefox asks for permission
+    to use MIDI devices with SysEx; allow it.</p>
+
+  <section>
+    <h2>1. Firmware file</h2>
+    <input type="file" id="file" accept=".syx">
+    <div id="file-info"></div>
+  </section>
+
+  <section>
+    <h2>2. Flash</h2>
+    <p>Connect the unit by USB and switch it on. The page asks for MIDI access with SysEx, reboots the
+      unit into its bootloader, sends the firmware and checks the version the unit reports afterwards.</p>
+    <label><input type="checkbox" id="manual"> I'll enter the bootloader by hand</label>
+    <div id="manual-help" hidden>
+      <ol>
+        <li>Switch the Mono Station off.</li>
+        <li>Hold Scales + Note + Velocity.</li>
+        <li>Switch it on, then let go.</li>
+      </ol>
+    </div>
+    <p><button id="flash" disabled>Flash</button></p>
+    <progress id="progress" value="0" max="1"></progress>
+    <div id="progress-text"></div>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <div id="log"></div>
+  </section>
+</main>
+<script src="flasher.js"></script>
+</body>
+</html>

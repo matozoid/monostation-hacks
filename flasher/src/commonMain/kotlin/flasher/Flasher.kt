@@ -28,6 +28,11 @@ fun matchingPorts(access: MidiAccess, wanted: String?, bootloader: Boolean): Lis
         .filter { p -> if (wanted != null) wanted.lowercase() in p.name.lowercase() else "circuit mono station" in p.name.lowercase() }
         .filter { isBootloaderPort(it.name) == bootloader }
 
+/** A MidiAccess whose port list only changes when asked to look again (Web MIDI in Firefox). */
+interface Rescannable {
+    suspend fun rescan()
+}
+
 /** Polls up to waitMs for exactly one app (or bootloader) port. */
 suspend fun findPort(access: MidiAccess, wanted: String?, bootloader: Boolean, waitMs: Long): PortPair? {
     val start = TimeSource.Monotonic.markNow()
@@ -37,6 +42,7 @@ suspend fun findPort(access: MidiAccess, wanted: String?, bootloader: Boolean, w
         if (hits.size > 1) throw FlashError("need exactly one matching port, found ${hits.map { it.name }} (use --port)")
         if (start.elapsedNow().inWholeMilliseconds >= waitMs) return null
         delay(250)
+        (access as? Rescannable)?.let { runCatching { it.rescan() } }
     }
 }
 
@@ -55,7 +61,7 @@ class Device private constructor(val name: String, private val input: MidiInput,
         if (timeoutMs <= 0) messages.tryReceive().getOrNull()
         else withTimeoutOrNull(timeoutMs.milliseconds) { messages.receive() }
 
-    fun drain() { while (messages.tryReceive().isSuccess) Unit }
+    fun drain() { while (messages.tryReceive().isSuccess) { } }
 
     fun close() {
         runCatching { input.close() }

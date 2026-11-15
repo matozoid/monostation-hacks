@@ -144,7 +144,10 @@ class FirmwareFile(
     val imageBytes: Int,
     val checksum: Long,
     val blocks: Int,
-)
+) {
+    fun summary() = "firmware $version (start message says $containerVersion), $imageBytes bytes, " +
+            "$blocks blocks, checksum 0x${checksum.toString(16).padStart(8, '0')}"
+}
 
 /** Decode and check a firmware .syx before anything is sent (tools/flash.py check_syx). */
 fun checkSyx(data: ByteArray): FirmwareFile {

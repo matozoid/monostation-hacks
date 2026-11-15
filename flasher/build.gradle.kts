@@ -1,5 +1,5 @@
 // Circuit Mono Station firmware flasher (#63): Kotlin Multiplatform, MIDI through ktmidi.
-// Spike: common protocol code plus a JVM command-line flasher; the Kotlin/JS page comes next.
+// Common protocol and flash flow; a JVM command-line flasher and a Kotlin/JS page (own Web MIDI backend).
 plugins {
     kotlin("multiplatform") version "2.4.20"
 }
@@ -10,6 +10,16 @@ kotlin {
         mainRun {
             mainClass.set("flasher.MainKt")
         }
+    }
+
+    js {
+        outputModuleName.set("flasher")
+        browser {
+            commonWebpackConfig { outputFileName = "flasher.js" }
+            testTask { enabled = false }       // common tests run under Node (jsNodeTest)
+        }
+        nodejs()
+        binaries.executable()
     }
 
     sourceSets {
