@@ -22,24 +22,35 @@
   .ok { color: var(--ok); }
   .error { color: var(--err); }
   #file-info { overflow-wrap: anywhere; }
+  .build { display: grid; grid-template-columns: auto 1fr; column-gap: .5rem; margin: .5rem 0; cursor: pointer; }
+  .build input { grid-row: span 2; margin-top: .35rem; }
+  .build span { color: var(--muted); }
 </style>
 </head>
 <body>
 <main>
   <h1>Circuit Mono Station flasher</h1>
-  <p>Unofficial. Flashes a firmware <code>.syx</code> through the unit's bootloader over USB MIDI.
+  <p>Unofficial. Flashes modified firmware through the unit's bootloader over USB MIDI.
     The bootloader itself is never written, so a failed update can always be retried.</p>
   <p>Tested with Firefox, the supported browser. When you press Flash, Firefox asks for permission
     to use MIDI devices with SysEx; allow it.</p>
 
   <section>
-    <h2>1. Firmware file</h2>
+    <h2>1. Stock firmware</h2>
+    <p>This page holds only our changes, not Novation's firmware. Download the stock firmware 1.2,
+      <a id="stock-link" href="#">monostation-firmware-800.syx</a>, from Novation and choose it here;
+      the page builds the modified firmware from it. Any other <code>.syx</code> is flashed as it is.</p>
     <input type="file" id="file" accept=".syx">
     <div id="file-info"></div>
   </section>
 
   <section>
-    <h2>2. Flash</h2>
+    <h2>2. Firmware to flash</h2>
+    <div id="builds"><p>Choose the stock file first.</p></div>
+  </section>
+
+  <section>
+    <h2>3. Flash</h2>
     <p>Connect the unit by USB and switch it on. The page asks for MIDI access with SysEx, reboots the
       unit into its bootloader, sends the firmware and checks the version the unit reports afterwards.</p>
     <label><input type="checkbox" id="manual"> I'll enter the bootloader by hand</label>
