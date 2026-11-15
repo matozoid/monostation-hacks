@@ -3,6 +3,12 @@
 New features for the Novation Circuit Mono Station, built on top of Novation's own
 firmware 1.2, plus the reverse-engineering tools and notes that make them possible.
 
+- **Flash the mods from your browser:** [matozoid.github.io/monostation-hacks](https://matozoid.github.io/monostation-hacks/)
+  (Firefox; you choose Novation's stock firmware 1.2 file and the page builds the modded
+  firmware from it).
+- **Discussion and announcements:** the Facebook group
+  [Novation Circuit Mono Station Users](https://www.facebook.com/groups/2161801177248617).
+
 - **Plays like stock.** Each mod changes only the behaviour it adds; everything else is
   the original firmware, byte for byte.
 - **Easy to undo.** The bootloader is never touched, so you can always flash stock
