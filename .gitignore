@@ -22,3 +22,7 @@ build/
 
 # Reference compiler (tools/fetch_toolchain.py)
 toolchains/
+
+# Gradle and Kotlin caches of the flasher (flasher/build is covered by build/ above)
+.gradle/
+.kotlin/
