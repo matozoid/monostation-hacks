@@ -73,8 +73,7 @@ private object PageUi : FlashUi {
 
     override suspend fun confirm(fw: FirmwareFile, versions: Pair<Int, Int>?): Boolean {
         manualHelp.hidden = true
-        val now = versions?.let { " The bootloader is ${it.first}." } ?: ""
-        return window.confirm("Flash firmware ${fw.version} now?$now Don't unplug the unit until it restarts.")
+        return window.confirm("Flash firmware ${fw.version} now? Don't unplug the unit until it restarts.")
     }
 }
 
