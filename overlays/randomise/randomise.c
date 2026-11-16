@@ -74,8 +74,14 @@ static int clamp(int value, int lo, int hi)
 
 #define MILLISECONDS    (*(volatile uint32_t *)0x200007e4) /* TIM5 ch3 1 ms count */
 
-/* #45: a patch Mutate glides each changed param to its new value over GLIDE_MS. */
-#define GLIDE_MS        500
+/* #45: a patch Mutate glides each changed param to its new value over one beat (four
+ * 1/16 steps) at the session tempo, and a held Mutate repeats once a beat. The clock state
+ * is the context of soft timer 0 (docs/sequencer.md "Time base"); its tempo cell +0x14
+ * holds the BPM in field 0. With external sync that is the session's own tempo, not the
+ * incoming one. */
+#define TIMER_CONTEXTS  ((void *volatile *)0x200032f4)
+#define CLOCK_TEMPO     0x14
+#define DEFAULT_BEAT_MS 500
 
 /* The distinct notes on the Expand view's pads: the current scale over its four octaves
  * (two for Chromatic), relative to C; the router adds the root note on playback. */
@@ -244,11 +250,15 @@ static unsigned nudge_param(const struct param_rule *rule, unsigned value)
 
 /* CCM (docs/hardware.md "Free RAM"): not cleared at boot, so it carries a magic word.
  * Clear of transpose (0x10000000) and drive (0x10000400). */
-#define STATE_MAGIC     0x444e5252u /* "RRND" */
+#define STATE_MAGIC     0x544e5252u /* "RRNT": changes with the layout */
 struct state {
     uint32_t magic;
     uint8_t gliding;
     uint32_t glide_start;
+    uint32_t glide_ms;
+    void *held_ui;              /* Shift + Mutate held: repeat on this ui, else 0 */
+    uint32_t next_repeat;       /* patch Mutate: next repeat */
+    uint8_t looped[2];          /* step Mutates: Osc track started a new pass of its pattern */
     void *sink;                 /* param sink of the glide */
     uint8_t active[RULES];      /* param still gliding: no knob has moved it */
     uint8_t from[RULES], to[RULES], last[RULES];
@@ -265,6 +275,15 @@ static struct state *state(void)
     return s;
 }
 
+static uint32_t beat_ms(void)
+{
+    void *clock = TIMER_CONTEXTS[0];
+    if (!clock)
+        return DEFAULT_BEAT_MS;
+    unsigned bpm = *(uint8_t *)cell_read(FIELD(clock, CLOCK_TEMPO, void *));
+    return bpm >= 30 ? 60000 / bpm : DEFAULT_BEAT_MS;
+}
+
 static param_set_fn sink_set(void *sink)
 {
     return **(param_set_fn **)sink;
@@ -278,8 +297,8 @@ static void glide_tick(void)
     if (!s->gliding)
         return;
     uint32_t elapsed = MILLISECONDS - s->glide_start;
-    if (elapsed >= GLIDE_MS) {
-        elapsed = GLIDE_MS;
+    if (elapsed >= s->glide_ms) {
+        elapsed = s->glide_ms;
         s->gliding = 0;
     }
     for (unsigned i = 0; i < RULES; i++) {
@@ -290,7 +309,7 @@ static void glide_tick(void)
             s->active[i] = 0;
             continue;
         }
-        int value = s->from[i] + ((int)s->to[i] - (int)s->from[i]) * (int)elapsed / GLIDE_MS;
+        int value = s->from[i] + ((int)s->to[i] - (int)s->from[i]) * (int)elapsed / (int)s->glide_ms;
         if (value != s->last[i]) {
             sink_set(s->sink)(s->sink, id, value, SOURCE_PANEL);
             s->last[i] = value;
@@ -318,7 +337,7 @@ static void clear_view_38(void *ui)
 
 /* #45: in the Patches view, move the current patch a small random step, as if a few knobs
  * had been turned a little: the patch shows as edited and can be saved as usual. Switches
- * jump; the rest glide over GLIDE_MS. A press during a glide starts from where it is. */
+ * jump; the rest glide over one beat. A press during a glide starts from where it is. */
 static int mutate_patch(void *ui)
 {
     if (FIELD(ui, UI_ACTIVE_VIEW, void *) != FIELD(ui, UI_PATCH_VIEW, void *))
@@ -374,6 +393,7 @@ static int mutate_patch(void *ui)
     }
     s->sink = sink;
     s->glide_start = MILLISECONDS;
+    s->glide_ms = beat_ms();
     s->gliding = 1;
     glide_tick();
     return 1;
@@ -435,18 +455,82 @@ static int mutate_field(void *ui)
     return 1;
 }
 
+/* One of our Mutates, if Shift + Mutate may act and the view has one; 1 when it acted. */
+static int mutate(void *ui)
+{
+    return mutate_allowed(ui) && (mutate_patch(ui) || mutate_field(ui));
+}
+
 void ui_button_event(void *ui, unsigned button)
 {
-    if (button == BUTTON_MUTATE && mutate_allowed(ui) && (mutate_patch(ui) || mutate_field(ui)))
+    if (button == BUTTON_MUTATE && mutate(ui)) {
+        struct state *s = state();
+        s->held_ui = ui;
+        s->next_repeat = MILLISECONDS + beat_ms();
+        s->looped[0] = s->looped[1] = 0;
         return;
+    }
     stock_ui_button_event(ui, button);
 }
 
-/* #45: the 10 ms main-loop soft timer that scans the pots; the glide steps after it. */
+/* A held Mutate repeats until Pattern Settings or Shift is let go, or the view has no
+ * Mutate of ours any more (stock's whole-step shuffle never repeats): the patch once a
+ * beat, the steps each time the track's pattern starts again (only while it plays). */
+void stock_ui_root_button_up(void *ui, unsigned button);
+
+void ui_root_button_up(void *ui, unsigned button)
+{
+    if (button == BUTTON_MUTATE)
+        state()->held_ui = 0;
+    stock_ui_root_button_up(ui, button);
+}
+
+static void repeat_tick(void)
+{
+    struct state *s = state();
+    void *ui = s->held_ui;
+    if (!ui)
+        return;
+    if (FIELD(ui, UI_ACTIVE_VIEW, void *) == FIELD(ui, UI_PATCH_VIEW, void *)) {
+        if ((int32_t)(MILLISECONDS - s->next_repeat) < 0)
+            return;
+        s->next_repeat = MILLISECONDS + beat_ms();
+    } else {
+        void *mode_view = FIELD(ui, UI_MODE_VIEW, void *);
+        unsigned track = FIELD(mode_view, MV_TRACK, uint8_t);
+        if (FIELD(ui, UI_ACTIVE_VIEW, void *) == mode_view && track < 2) {
+            if (!s->looped[track])
+                return;
+            s->looped[track] = 0;
+        }
+    }
+    if (!mutate(ui))
+        s->held_ui = 0;
+}
+
+/* The clock tick moves each track a step through this; it returns 1 when the track went
+ * on to the next pattern of its chain, or back to the start of a single pattern: a new
+ * loop. dry is set when the tick only looks ahead. */
+int stock_seq_step_advance(void *seq, void *pattern_cell, void *step_cell, unsigned track,
+                           unsigned jump, unsigned dry, unsigned force_random);
+
+int seq_step_advance(void *seq, void *pattern_cell, void *step_cell, unsigned track,
+                     unsigned jump, unsigned dry, unsigned force_random)
+{
+    int looped = stock_seq_step_advance(seq, pattern_cell, step_cell, track, jump, dry,
+                                        force_random);
+    if (looped && !(dry & 0xff) && (track & 0xff) < 2)
+        state()->looped[track & 0xff] = 1;
+    return looped;
+}
+
+/* #45: the 10 ms main-loop soft timer that scans the pots; the glide and the held Mutate
+ * step after it. */
 void stock_input_poll_task(unsigned index, unsigned missed, void *context);
 
 void input_poll_task(unsigned index, unsigned missed, void *context)
 {
     stock_input_poll_task(index, missed, context);
     glide_tick();
+    repeat_tick();
 }

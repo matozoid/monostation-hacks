@@ -35,7 +35,7 @@ private val BUILDS = listOf(
     Build("Test build (firmware 751)",
         "Being tested for the first release: it may change or have bugs. Mutate nudges one " +
             "field in the Velocity, Gate, Glide and Expand views, and the patch in the Patches " +
-            "view (gliding to it). Shift + key in the Note view transposes the Osc tracks live. " +
+            "view (gliding to it); held, it repeats (steps once a loop, the patch once a beat). Shift + key in the Note view transposes the Osc tracks live. " +
             "Stronger Overdrive and Distortion.",
         "builds/mods-751.fwdiff"),
     Build("Stock firmware 1.2", "Novation's firmware, unchanged: restores the unit.", null),

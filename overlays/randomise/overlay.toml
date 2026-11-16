@@ -4,10 +4,12 @@
 # view, and on the mod-seq track, Mutate stays stock and shuffles whole steps.
 # #45 Patch randomiser: Mutate in the Patches view moves the current patch a small random
 # step within playable ranges, as if a few knobs had been turned a little, gliding to it
-# over 500 ms.
+# over one beat (four steps at the session tempo).
 # #60 Mild Mutate: values move from where they are: steps by one, the patch a bit more.
+# Holding Shift + Pattern Settings repeats our Mutates: the patch once a beat, the steps
+# each time the pattern loops.
 base = 800
 # Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
 version = 750
 sources = ["randomise.c"]
-replace = ["ui_button_event", "input_poll_task"]
+replace = ["ui_button_event", "ui_root_button_up", "input_poll_task", "seq_step_advance"]

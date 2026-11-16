@@ -221,12 +221,14 @@ class Overlay800Test(unittest.TestCase):
     @unittest.skipUnless(HAVE_GCC, "arm-none-eabi-gcc not installed")
     def test_randomise_hooks_button_down(self):
         """overlays/randomise (#13, #45, #60) changes only the version, the ui_root vtable's
-        button-down slot and the input task's soft-timer entry, which now point after the image."""
+        button-down and button-up slots, the input task's soft-timer entry, which now point
+        after the image, and the clock tick's three calls of seq_step_advance."""
         fwsrc.generate(self.tmp / "stock.bin", self.tmp / "src", overlays=[RANDOMISE])
         built = fwsrc.build(self.tmp / "src", self.tmp / "out.bin")
         changed = {i for i in range(len(self.image)) if built[i] != self.image[i]}
-        slots = (0x1BB24, 0x1F128)
-        self.assertLessEqual(changed, {0x1B0, 0x1B1} | {s + k for s in slots for k in range(4)})
+        slots = (0x1BB24, 0x1BB28, 0x1F128)
+        calls = (0xAF54, 0xB034, 0xB16E)
+        self.assertLessEqual(changed, {0x1B0, 0x1B1} | {s + k for s in slots + calls for k in range(4)})
         self.assertEqual(built[0x1B0:0x1B2], b"\x50\x07")
         for s in slots:
             target = int.from_bytes(built[s:s + 4], "little")

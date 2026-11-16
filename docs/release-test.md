@@ -34,10 +34,14 @@ Shift + Pattern Settings is Mutate. Use an Osc 1 pattern with notes on about hal
 - [ ] The same on the Osc 2 track.
 - [ ] Note view and the mod-seq track: Mutate is stock (shuffles whole steps).
 - [ ] Empty steps stay empty in every view.
+- [ ] Playing, hold Shift + Pattern Settings: Mutate repeats once per pattern loop, as the pattern starts again; letting go of either button stops it.
+- [ ] Stopped, hold it: one Mutate only.
+- [ ] Holding it in the Note view shuffles once only (stock).
 
 ## Patch randomiser (#45, #60)
 
-- [ ] Patches view + Mutate: the sound changes a little and glides over about half a second; the patch shows as edited.
+- [ ] Patches view + Mutate: the sound changes a little and glides over one beat (500 ms at 120 BPM, 1 s at 60 BPM); the patch shows as edited.
+- [ ] Hold Shift + Pattern Settings: the sound keeps morphing, one glide a beat, smoothly into the next; it stops on release.
 - [ ] Each press changes it about as much as the last.
 - [ ] Turn a knob (cutoff) during a glide: the knob wins, no jump back.
 - [ ] Hold a note while pressing: no clicks or stuck notes; MIDI out (if monitored) shows the param changes.

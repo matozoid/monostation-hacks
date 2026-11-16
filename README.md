@@ -37,7 +37,9 @@ and everything else stay as they are.
 | Glide | Shift + Gate | moves glide amounts a little and now and then switches glide on or off |
 | Expand | Shift + Note | moves notes to nearby notes on the 32 Expand pads: the current scale and root over four octaves (two for Chromatic) |
 
-Every press moves each note one step (#60); press again to wander further.
+Every press moves each note one step (#60); press again to wander further. Keep Shift +
+Pattern Settings held while the pattern plays and Mutate repeats each time the pattern
+starts again, so every pass is a little different until you let go.
 
 Tips:
 
@@ -51,8 +53,10 @@ Tips:
 
 Open the **Patches** view and press **Mutate** (Shift + Pattern Settings): the current
 patch takes a small random step, as if a few knobs had been turned a little. The sound
-glides to the new setting over half a second instead of jumping. Press again to wander
-further.
+glides to the new setting over one beat (four steps at the session tempo) instead of
+jumping. Press again to wander further, or keep the buttons held: Mutate then repeats
+once a beat, each glide running into the next, so the sound keeps morphing until you let
+go.
 
 - One press moves about half the knobs, each by up to an eighth of its range. Switches
   and waveforms change only now and then, and jump instead of gliding.
