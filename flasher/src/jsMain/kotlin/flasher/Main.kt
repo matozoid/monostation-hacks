@@ -29,12 +29,15 @@ private val manualHelp = el<HTMLElement>("manual-help")
 /** What the page can flash: one of our diffs applied to stock 1.2, or a file as is. */
 private class Build(val title: String, val description: String, val diff: String?)
 
+/* Builds (docs/release-test.md): the current release and the current test build, which is
+ * rebuilt under the same number until it is released as test + 1. */
 private val BUILDS = listOf(
-    Build("Mods (firmware 754)",
-        "Mutate nudges one field in the Velocity, Gate, Glide and Expand views, and the patch " +
-            "in the Patches view (gliding to it). Shift + key in the Note view transposes the " +
-            "Osc tracks live. Stronger Overdrive and Distortion.",
-        "builds/mods-754.fwdiff"),
+    Build("Test build (firmware 751)",
+        "Being tested for the first release: it may change or have bugs. Mutate nudges one " +
+            "field in the Velocity, Gate, Glide and Expand views, and the patch in the Patches " +
+            "view (gliding to it). Shift + key in the Note view transposes the Osc tracks live. " +
+            "Stronger Overdrive and Distortion.",
+        "builds/mods-751.fwdiff"),
     Build("Stock firmware 1.2", "Novation's firmware, unchanged: restores the unit.", null),
 )
 

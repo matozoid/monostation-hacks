@@ -105,9 +105,10 @@ three distortion types differ more. At 0 they sound as stock. This mod is
 
 ## Firmware versions
 
-Firmware 1.2 is build 800 inside the firmware. Our builds count up from **750**:
-releases, the ones on the flasher page, have even numbers (750, 752, …); test builds in
-between have odd ones. The page shows which build it flashes.
+Firmware 1.2 is build 800 inside the firmware. Our releases have even numbers from
+**750** up; the build being tested for the next release has the odd number after the
+latest release. The flasher page offers both: the latest release, and the test build if
+you want to try what's coming (it may change or have bugs).
 They stay below 800 on purpose: Components offers an update to any unit below 800, so
 it offers to put stock 1.2 back.
 
@@ -134,20 +135,20 @@ The [flasher page](https://matozoid.github.io/monostation-hacks/) is the easy wa
 build the modded firmware yourself (all mods; leave out an `--overlay` to drop one):
 
     python3 tools/syx2bin.py private/firmware/monostation-firmware-800.syx private/firmware/monostation-firmware-800.bin
-    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/mods --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 754
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/mods --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 751
     python3 tools/fwsrc.py build build/mods build/mods/firmware.bin
-    python3 tools/bin2syx.py build/mods/firmware.bin private/firmware/mods-754.syx --version 754
+    python3 tools/bin2syx.py build/mods/firmware.bin private/firmware/mods-751.syx --version 751
 
 Flash it:
 
-    .venv/bin/python tools/flash.py private/firmware/mods-754.syx
+    .venv/bin/python tools/flash.py private/firmware/mods-751.syx
 
 The flasher checks the file, then waits for the unit's bootloader:
 
 1. Switch the Mono Station off.
 2. Hold **Scales + Note + Velocity** and switch it on.
 3. The flasher sends the firmware, waits for the unit to restart and checks that it
-   reports the new version (754).
+   reports the new version (751).
 
 Go back to stock firmware 1.2 at any time: connect the unit to Novation Components and
 accept its firmware update, or flash it the same way:

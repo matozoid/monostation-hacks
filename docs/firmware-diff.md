@@ -6,7 +6,7 @@ The flasher page (#63) must not ship Novation's firmware. It ships a diff per bu
 modified `.syx` from it before flashing.
 
 Tools: `tools/fwdiff.py` (reference) and `flasher/.../FirmwareDiff.kt` (the page and the
-JVM tests). Both rebuild `mods-754.syx` byte for byte (`tests/test_fwdiff.py`,
+JVM tests). Both rebuild `mods-751.syx` byte for byte (`tests/test_fwdiff.py`,
 `FirmwareDiffFileTest`).
 
 ## Format `fwdiff 1`
@@ -39,18 +39,20 @@ longest match of at least 16 bytes anywhere in stock (moved code or tables), els
 Shorter matches stay data: they are coincidences, not stock code.
 
 ```
-python3 tools/fwdiff.py make private/firmware/monostation-firmware-800.syx private/firmware/mods-754.syx \
-    flasher/src/jsMain/resources/builds/mods-754.fwdiff
-python3 tools/fwdiff.py show flasher/src/jsMain/resources/builds/mods-754.fwdiff
+python3 tools/fwdiff.py make private/firmware/monostation-firmware-800.syx private/firmware/mods-751.syx \
+    flasher/src/jsMain/resources/builds/mods-751.fwdiff
+python3 tools/fwdiff.py show flasher/src/jsMain/resources/builds/mods-751.fwdiff
 ```
 
-`mods-754` (randomise + transpose + drive overlays): 32 ops, 129,761 bytes copied in place,
+`mods-751` (randomise + transpose + drive overlays): 32 ops, 129,761 bytes copied in place,
 none moved, 3,679 bytes of data. The data is our bytes at the hook sites plus
 our code after the image; it holds no relocated stock code.
 
-`mods-754.syx` is built with
-`fwsrc.py generate private/firmware/monostation-firmware-800.bin OUT --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 754`,
-`fwsrc.py build`, `bin2syx.py --version 754`.
+`mods-751.syx` is built with
+`fwsrc.py generate private/firmware/monostation-firmware-800.bin OUT --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 751`,
+`fwsrc.py build`, `bin2syx.py --version 751`.
 
-When a new release (an even build number) goes on the page, add its `.fwdiff` here and a `Build` entry in
+The page holds two diffs: the latest release and the current test build
+(`docs/release-test.md`). Rebuild the test diff in place while testing; on a release, add
+the release's diff, drop the previous release's, and update the `Build` entries in
 `flasher/src/jsMain/kotlin/flasher/Main.kt`.

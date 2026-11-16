@@ -3,10 +3,11 @@
 Run this list on the unit before a build goes on the flasher page. Note the build, the date
 and anything that fails in the release's issue comment.
 
-Versions count up from 750 and stay below 800, so Components still offers stock 1.2.
-Test builds take the next odd number, releases (the flasher page) the next even one. Test
-an odd build with this list; when it passes, build the same source as the next even number
-for the page.
+Versions stay between 750 and 800, so Components still offers stock 1.2. There is one
+test number at a time (odd), and every test build is rebuilt under it. When it passes this
+list, the same source is built as test + 1 (even) and released; the next test number is
+test + 2. The flasher page offers the latest release and the current test build.
+Now: test 751, no release yet (the first will be 752).
 
 Build:
 
