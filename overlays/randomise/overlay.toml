@@ -5,8 +5,7 @@
 # #45 Patch randomiser: Mutate in the Patches view moves the current patch a small random
 # step within playable ranges, as if a few knobs had been turned a little, gliding to it
 # over 500 ms.
-# #60 Mild Mutate: every Mutate moves values from where they are; quick presses (under
-# 500 ms apart) move further each time, up to four levels.
+# #60 Mild Mutate: values move from where they are: steps by one, the patch a bit more.
 base = 800
 # Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
 version = 750

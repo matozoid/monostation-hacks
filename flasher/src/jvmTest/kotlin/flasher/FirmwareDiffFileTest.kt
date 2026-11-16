@@ -18,10 +18,10 @@ class FirmwareDiffFileTest {
     }
 
     @Test
-    fun mods750ByteExact() {
+    fun mods754ByteExact() {
         val stock = File(firmware, "monostation-firmware-800.syx").takeIf { it.exists() }?.readBytes() ?: return
-        val mods = File(firmware, "mods-750.syx").takeIf { it.exists() }?.readBytes() ?: return
-        val diff = FirmwareDiff.parse(File(builds, "mods-750.fwdiff").readText())
+        val mods = File(firmware, "mods-754.syx").takeIf { it.exists() }?.readBytes() ?: return
+        val diff = FirmwareDiff.parse(File(builds, "mods-754.fwdiff").readText())
         assertContentEquals(mods, diff.apply(stock))
     }
 }

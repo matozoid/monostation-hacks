@@ -30,11 +30,11 @@ private val manualHelp = el<HTMLElement>("manual-help")
 private class Build(val title: String, val description: String, val diff: String?)
 
 private val BUILDS = listOf(
-    Build("Mods (firmware 750)",
+    Build("Mods (firmware 754)",
         "Mutate nudges one field in the Velocity, Gate, Glide and Expand views, and the patch " +
-            "in the Patches view (gliding to it); quick presses mutate harder. Shift + key in " +
-            "the Note view transposes the Osc tracks live. Stronger Overdrive and Distortion.",
-        "builds/mods-750.fwdiff"),
+            "in the Patches view (gliding to it). Shift + key in the Note view transposes the " +
+            "Osc tracks live. Stronger Overdrive and Distortion.",
+        "builds/mods-754.fwdiff"),
     Build("Stock firmware 1.2", "Novation's firmware, unchanged: restores the unit.", null),
 )
 

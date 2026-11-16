@@ -37,9 +37,7 @@ and everything else stay as they are.
 | Glide | Shift + Gate | moves glide amounts a little and now and then switches glide on or off |
 | Expand | Shift + Note | moves notes to nearby notes on the 32 Expand pads: the current scale and root over four octaves (two for Chromatic) |
 
-**Press harder by pressing quicker (#60).** One press is mild: about half the notes move
-one small step. Press again within half a second and every note moves, further each
-time, up to four levels. Pause, and the next press is mild again.
+Every press moves each note one step (#60); press again to wander further.
 
 Tips:
 
@@ -56,11 +54,12 @@ patch takes a small random step, as if a few knobs had been turned a little. The
 glides to the new setting over half a second instead of jumping. Press again to wander
 further.
 
-- One press moves about a quarter of the knobs, each by a sixteenth of its range or
-  less. Quick presses (under half a second apart) go up to four levels: at the top every
-  knob moves, by up to a quarter of its range. Switches and waveforms change only now and
-  then, and jump instead of gliding.
-- Turn a knob during the glide and the knob wins: that parameter stops gliding.
+- One press moves about half the knobs, each by up to an eighth of its range. Switches
+  and waveforms change only now and then, and jump instead of gliding.
+- Turn a knob during the glide and the knob wins: that parameter stops gliding. The same
+  goes for parameter automation the pattern plays.
+- Press Mutate while recording and the changes are recorded as automation, like knob
+  moves: a quick way to put movement into a pattern.
 
 Each step stays playable:
 
@@ -106,8 +105,9 @@ three distortion types differ more. At 0 they sound as stock. This mod is
 
 ## Firmware versions
 
-Firmware 1.2 is build 800 inside the firmware. Our builds count up from **750**: each
-release takes the next number (750, 751, …), and the page shows which one it flashes.
+Firmware 1.2 is build 800 inside the firmware. Our builds count up from **750**:
+releases, the ones on the flasher page, have even numbers (750, 752, …); test builds in
+between have odd ones. The page shows which build it flashes.
 They stay below 800 on purpose: Components offers an update to any unit below 800, so
 it offers to put stock 1.2 back.
 
@@ -134,20 +134,20 @@ The [flasher page](https://matozoid.github.io/monostation-hacks/) is the easy wa
 build the modded firmware yourself (all mods; leave out an `--overlay` to drop one):
 
     python3 tools/syx2bin.py private/firmware/monostation-firmware-800.syx private/firmware/monostation-firmware-800.bin
-    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/mods --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 750
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/mods --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 754
     python3 tools/fwsrc.py build build/mods build/mods/firmware.bin
-    python3 tools/bin2syx.py build/mods/firmware.bin private/firmware/mods-750.syx --version 750
+    python3 tools/bin2syx.py build/mods/firmware.bin private/firmware/mods-754.syx --version 754
 
 Flash it:
 
-    .venv/bin/python tools/flash.py private/firmware/mods-750.syx
+    .venv/bin/python tools/flash.py private/firmware/mods-754.syx
 
 The flasher checks the file, then waits for the unit's bootloader:
 
 1. Switch the Mono Station off.
 2. Hold **Scales + Note + Velocity** and switch it on.
 3. The flasher sends the firmware, waits for the unit to restart and checks that it
-   reports the new version (750).
+   reports the new version (754).
 
 Go back to stock firmware 1.2 at any time: connect the unit to Novation Components and
 accept its firmware update, or flash it the same way:

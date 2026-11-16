@@ -361,4 +361,5 @@ The pots' step-edit cell (filter view `+0x30`) and the patches view's (`+0x40`) 
 ## Open
 
 - Clock from USB and DIN at once: check on hardware whether the tempo doubles (*MIDI in*).
+- Patch Mutate (#45, `overlays/randomise`) sets params like a knob (`param_set` source 1), and on the unit (2026-11-16) a Mutate while recording records at least part of its changes as automation. Which of `param_set`'s source-1 targets (`+0x14`, `+0x18`) is the record hub's param interface (`vt_rec_hub` `+4`, `rec_hub_param_thunk`) is not traced yet.
 - Step entry (#8): confirm on hardware that step-edit knob writes don't need Record (*Step editing*).

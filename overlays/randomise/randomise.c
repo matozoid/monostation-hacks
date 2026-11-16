@@ -1,6 +1,6 @@
 /* #13: context-sensitive Mutate, #45: Mutate in the Patches view nudges the patch, which
- * glides to its new values, and #60: every Mutate is mild, moving values from where they
- * are, further with each press of a quick burst.
+ * glides to its new values, and #60: Mutate moves values a little from where they are
+ * (steps mildly, the patch a bit more).
  * The offsets are those stock ui_button_event uses (docs/source-map.md ui_button_event;
  * Shift+Oct pattern transpose walks the same steps). */
 #include <firmware.h>
@@ -55,10 +55,15 @@ static unsigned random_below(unsigned n)
     return rng_read() % n;
 }
 
-/* +-(1..level), each sign equally likely. */
-static int random_offset(unsigned level)
+/* #60: how far a Mutate moves values from where they are. Steps move +-1..STEP_LEVEL,
+ * patch params by up to span * PATCH_LEVEL / 16. */
+#define STEP_LEVEL      1
+#define PATCH_LEVEL     2
+
+/* +-(1..STEP_LEVEL), each sign equally likely. */
+static int random_offset(void)
 {
-    int n = (int)random_below(level) + 1;
+    int n = (int)random_below(STEP_LEVEL) + 1;
     return random_below(2) ? n : -n;
 }
 
@@ -69,10 +74,6 @@ static int clamp(int value, int lo, int hi)
 
 #define MILLISECONDS    (*(volatile uint32_t *)0x200007e4) /* TIM5 ch3 1 ms count */
 
-/* #60: presses closer together than BURST_GAP_MS form a burst; each press in it moves
- * values further, up to LEVELS. Tuned on the unit. */
-#define BURST_GAP_MS    500
-#define LEVELS          4
 /* #45: a patch Mutate glides each changed param to its new value over GLIDE_MS. */
 #define GLIDE_MS        500
 
@@ -111,8 +112,8 @@ static unsigned pad_index(unsigned value)
     return best;
 }
 
-/* #60: move one step's field a little from where it is; level 1..LEVELS. */
-static void nudge_step(struct step *step, unsigned subview, unsigned level, unsigned max_gate,
+/* #60: move one step's field a little from where it is. */
+static void nudge_step(struct step *step, unsigned subview, unsigned max_gate,
                        const uint8_t *notes, unsigned note_count)
 {
     switch (subview) {
@@ -121,23 +122,23 @@ static void nudge_step(struct step *step, unsigned subview, unsigned level, unsi
         unsigned i = 0;
         while (i + 1 < note_count && notes[i] < step->note)
             i++;
-        step->note = notes[clamp((int)i + random_offset(level), 0, (int)note_count - 1)];
+        step->note = notes[clamp((int)i + random_offset(), 0, (int)note_count - 1)];
         break;
     }
     case SUBVIEW_VELOCITY:
         /* The velocity view's pad levels: (pad + 1) * 8, 127 for the top pad. */
-        step->velocity = pad_levels[clamp((int)pad_index(step->velocity) + random_offset(level), 1, 15)];
+        step->velocity = pad_levels[clamp((int)pad_index(step->velocity) + random_offset(), 1, 15)];
         break;
     case SUBVIEW_GATE: {
         int unit = (int)max_gate / 8 + 1;
-        step->gate = clamp((int)step->gate + unit * random_offset(level), 1, (int)max_gate);
+        step->gate = clamp((int)step->gate + unit * random_offset(), 1, (int)max_gate);
         break;
     }
     case SUBVIEW_GLIDE:
-        if (random_below(8) < level)            /* on/off flips with chance level/8 */
-            step->glide = step->glide == 0xff ? pad_levels[random_below(4 * level) % 15 + 1] : 0xff;
+        if (random_below(8) < STEP_LEVEL)       /* on/off flips with chance STEP_LEVEL/8 */
+            step->glide = step->glide == 0xff ? pad_levels[random_below(4 * STEP_LEVEL) + 1] : 0xff;
         else if (step->glide != 0xff)
-            step->glide = pad_levels[clamp((int)pad_index(step->glide) + random_offset(level), 1, 15)];
+            step->glide = pad_levels[clamp((int)pad_index(step->glide) + random_offset(), 1, 15)];
         break;
     }
 }
@@ -214,25 +215,25 @@ static const struct param_rule patch_rules[] = {
 
 enum { RULES = sizeof patch_rules / sizeof patch_rules[0] };
 
-/* A small random step away from the param's current value, bigger with the level: a
- * continuous param changes with chance level/4, by up to +-(span * level / 16 + 1); a
- * switch with chance level/16. */
-static unsigned nudge_param(const struct param_rule *rule, unsigned value, unsigned level)
+/* A small random step away from the param's current value: a continuous param changes
+ * with chance PATCH_LEVEL/4, by up to +-(span * PATCH_LEVEL / 16 + 1); a switch with
+ * chance PATCH_LEVEL/16. */
+static unsigned nudge_param(const struct param_rule *rule, unsigned value)
 {
     unsigned span = rule->hi - rule->lo;
     if (span == 0)
         return value;
     if (span < 8) {
-        if (random_below(16) >= level)
+        if (random_below(16) >= PATCH_LEVEL)
             return value;
         if (random_below(8) < rule->rest)
             return rule->value;
         return rule->lo + random_below(span + 1);
     }
-    if (random_below(4) >= level || (value == rule->value && random_below(8) < rule->rest))
+    if (random_below(4) >= PATCH_LEVEL || (value == rule->value && random_below(8) < rule->rest))
         return value;
     /* Never further out of lo..hi than the value already is. */
-    int step = span * level / 16 + 1;
+    int step = span * PATCH_LEVEL / 16 + 1;
     int next = (int)value + (int)random_below(2 * step + 1) - step;
     if (next > rule->hi)
         next = (int)value > rule->hi ? (int)value : rule->hi;
@@ -246,8 +247,6 @@ static unsigned nudge_param(const struct param_rule *rule, unsigned value, unsig
 #define STATE_MAGIC     0x444e5252u /* "RRND" */
 struct state {
     uint32_t magic;
-    uint32_t last_press;        /* MILLISECONDS of the last Mutate */
-    uint8_t level;              /* of the current burst, 1..LEVELS */
     uint8_t gliding;
     uint32_t glide_start;
     void *sink;                 /* param sink of the glide */
@@ -264,19 +263,6 @@ static struct state *state(void)
         s->magic = STATE_MAGIC;
     }
     return s;
-}
-
-/* The level of this press: 1 after a pause, else one more than the last, up to LEVELS. */
-static unsigned press_level(void)
-{
-    struct state *s = state();
-    uint32_t now = MILLISECONDS;
-    if (now - s->last_press > BURST_GAP_MS || s->level == 0)
-        s->level = 1;
-    else if (s->level < LEVELS)
-        s->level++;
-    s->last_press = now;
-    return s->level;
 }
 
 static param_set_fn sink_set(void *sink)
@@ -338,7 +324,6 @@ static int mutate_patch(void *ui)
     if (FIELD(ui, UI_ACTIVE_VIEW, void *) != FIELD(ui, UI_PATCH_VIEW, void *))
         return 0;
     clear_view_38(ui);
-    unsigned level = press_level();
     struct state *s = state();
     s->gliding = 0;
     void *sink = FIELD(FIELD(ui, UI_FILTER_VIEW, void *), VIEW_PARAM_SINK, void *);
@@ -346,7 +331,7 @@ static int mutate_patch(void *ui)
     unsigned cutoff = 0, shape = 0, key_track = 0, decay = 0, sustain = 0;
     for (unsigned i = 0; i < RULES; i++) {
         old[i] = synth_param_get(patch_rules[i].id);
-        values[i] = nudge_param(&patch_rules[i], old[i], level);
+        values[i] = nudge_param(&patch_rules[i], old[i]);
         jump[i] = patch_rules[i].hi - patch_rules[i].lo < 8;
         switch (patch_rules[i].id) {
         case FILTER_CUTOFF: cutoff = i; break;
@@ -419,7 +404,6 @@ static int mutate_field(void *ui)
     }
 
     clear_view_38(ui);
-    unsigned level = press_level();
 
     void *steps_cell = FIELD(FIELD(mode_view, MV_TRACKS + 4 * track, void *), TRACK_STEPS, void *);
     struct step *steps = cell_value(steps_cell);
@@ -434,10 +418,9 @@ static int mutate_field(void *ui)
         }
     if (max_gate > 96)
         max_gate = 96;
-    /* The first press of a burst moves about half the notes, later ones all of them. */
     for (unsigned i = 0; i < 16; i++)
-        if (steps[i].note && (level > 1 || random_below(2)))
-            nudge_step(&steps[i], subview, level, max_gate, pitches, pitch_count);
+        if (steps[i].note)
+            nudge_step(&steps[i], subview, max_gate, pitches, pitch_count);
     /* One random note keeps the longest gate, so the range doesn't shrink press by press. */
     if (subview == SUBVIEW_GATE && notes) {
         unsigned keep = random_below(notes);

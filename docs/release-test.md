@@ -3,10 +3,12 @@
 Run this list on the unit before a build goes on the flasher page. Note the build, the date
 and anything that fails in the release's issue comment.
 
-Versions: every build gets the next number, counting up from 750 (the first release
-series); stay below 800 so Components still offers stock 1.2.
+Versions count up from 750 and stay below 800, so Components still offers stock 1.2.
+Test builds take the next odd number, releases (the flasher page) the next even one. Test
+an odd build with this list; when it passes, build the same source as the next even number
+for the page.
 
-Build a release candidate:
+Build:
 
 ```
 python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/rel \
@@ -24,10 +26,9 @@ python3 tools/bin2syx.py build/rel/fw.bin private/firmware/mods-N.syx --version 
 
 Shift + Pattern Settings is Mutate. Use an Osc 1 pattern with notes on about half the steps.
 
-- [ ] Velocity view: one press changes about half the notes' velocities a little; the rhythm stays.
-- [ ] Four quick presses move the velocities further each time; after a pause the next press is small again.
+- [ ] Velocity view: one press changes every note's velocity a little; the rhythm stays.
 - [ ] Gate view: gates move a little; one note keeps the longest gate; nothing goes past it.
-- [ ] Glide view: glide amounts move; some steps switch glide on or off, more often in a quick burst.
+- [ ] Glide view: glide amounts move; some steps switch glide on or off.
 - [ ] Expand view: notes move to nearby notes of the scale, never off the scale.
 - [ ] The same on the Osc 2 track.
 - [ ] Note view and the mod-seq track: Mutate is stock (shuffles whole steps).
@@ -36,11 +37,12 @@ Shift + Pattern Settings is Mutate. Use an Osc 1 pattern with notes on about hal
 ## Patch randomiser (#45, #60)
 
 - [ ] Patches view + Mutate: the sound changes a little and glides over about half a second; the patch shows as edited.
-- [ ] Quick presses change it more; after a pause small again.
+- [ ] Each press changes it about as much as the last.
 - [ ] Turn a knob (cutoff) during a glide: the knob wins, no jump back.
 - [ ] Hold a note while pressing: no clicks or stuck notes; MIDI out (if monitored) shows the param changes.
 - [ ] Select another patch right after a press: the new patch loads as saved, no leftover glide.
 - [ ] Save the mutated patch, reload it: it sounds the same.
+- [ ] Record on, playing: Mutate's changes are recorded as automation and play back.
 
 ## Live transpose (#21)
 
