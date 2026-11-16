@@ -62,6 +62,7 @@ void stock_ui_root_pad_down(void *ui, unsigned pad, unsigned velocity);
 
 /* The child view that gets a pad event (pads 16-31 may go to an override view). */
 void *mode_view_target(void *mode_view, unsigned pad);
+int mode_view_has_override(void *mode_view);   /* pads 16..31 go to the override view, as pad - 16 */
 
 /* Router (docs/sequencer.md): channels 0-2 keys, 3-5 sequencer, 6-7 MIDI in; notes are
  * relative to the root. */

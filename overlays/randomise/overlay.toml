@@ -1,13 +1,15 @@
 # #13 Randomise gate, glide, velocity and pitch: Mutate (Shift + Pattern Settings) in the
-# Velocity, Gate, Glide or Expand view of the Osc 1 or Osc 2 track moves that field only of
-# the steps with a note (Expand: to a nearby note of the scale). In every other
-# view, and on the mod-seq track, Mutate stays stock and shuffles whole steps.
+# Velocity, Gate, Glide or Expand view of any track moves that field only of the steps
+# with a note (Expand: to a nearby note of the scale; #66 Mod Seq: its level view moves
+# levels, on steps that have one). #65: in the dual Osc view it moves both Osc tracks'
+# notes. In the Note view Mutate stays stock and shuffles whole steps; held while playing,
+# the shuffle repeats once per loop. In the Pattern Settings view it does nothing (stock).
 # #45 Patch randomiser: Mutate in the Patches view moves the current patch a small random
 # step within playable ranges, as if a few knobs had been turned a little, gliding to it
 # over one beat (four steps at the session tempo).
 # #60 Mild Mutate: values move from where they are: steps by one, the patch a bit more.
 # Holding Shift + Pattern Settings repeats our Mutates: the patch once a beat, the steps
-# each time the pattern loops.
+# each time the track's pattern loops (in the dual view, each Osc track on its own loop).
 base = 800
 # Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
 version = 750

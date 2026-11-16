@@ -44,9 +44,9 @@ python3 tools/fwdiff.py make private/firmware/monostation-firmware-800.syx priva
 python3 tools/fwdiff.py show flasher/src/jsMain/resources/builds/mods-751.fwdiff
 ```
 
-`mods-751` (randomise + transpose + drive overlays): 39 ops, 129,748 bytes copied in place,
-28 bytes "moved" and 3,952 bytes of data. The data is our bytes at the hook sites plus
-our code after the image; it holds no relocated stock code. The 28 moved bytes are
+`mods-751` (randomise + transpose + drive overlays): 39 ops, 129,746 bytes copied in place,
+16 bytes "moved" and 4,542 bytes of data. The data is our bytes at the hook sites plus our
+code after the image; it holds no relocated stock code. The 16 "moved" bytes are
 the image's `FF` padding, matched against a run of `FF` in stock.
 
 `mods-751.syx` is built with

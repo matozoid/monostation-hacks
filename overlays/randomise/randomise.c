@@ -20,7 +20,7 @@
 
 /* mode view */
 #define MV_KEYBOARDS    0x20    /* per-track keyboard views (Note and Expand) */
-#define MV_TRACKS       0x68    /* per-track step objects, Osc 1 and Osc 2 only */
+#define MV_TRACKS       0x68    /* per-track step objects: Osc 1, Osc 2, Mod Seq */
 #define MV_TRACK        0x74
 #define MV_SUBVIEW      0x75
 #define TRACK_STEPS     0x0c    /* cell holding a pointer to the pattern's 16 steps */
@@ -39,11 +39,15 @@
 #define SOURCE_PANEL    1
 typedef void (*param_set_fn)(void *sink, unsigned id, unsigned value, unsigned source);
 
-enum { SUBVIEW_VELOCITY = 1, SUBVIEW_GATE = 2, SUBVIEW_GLIDE = 3, SUBVIEW_EXPAND = 5 };
+/* Mode view subviews. On the Mod Seq track, Velocity is the level view; Dual is the two
+ * Osc keyboards (Osc 1 + Osc 2 pressed together), with MV_TRACK 0 or 1. */
+enum { SUBVIEW_NOTE = 0, SUBVIEW_VELOCITY = 1, SUBVIEW_GATE = 2, SUBVIEW_GLIDE = 3, SUBVIEW_EXPAND = 5,
+       SUBVIEW_DUAL = 6 };
+enum { MOD_SEQ = 2, TRACKS = 3 };
 
 struct step {                   /* docs/session-format.md "Pattern" */
     uint8_t note;               /* 0 = empty */
-    uint8_t velocity;
+    uint8_t velocity;           /* Mod Seq: the level, 0 = none */
     uint8_t gate;               /* micro-steps, 6 per step */
     uint8_t glide;              /* 0xff = none */
     uint8_t patch;
@@ -83,7 +87,7 @@ static int clamp(int value, int lo, int hi)
 #define CLOCK_TEMPO     0x14
 #define DEFAULT_BEAT_MS 500
 
-/* The distinct notes on the Expand view's pads: the current scale over its four octaves
+/* The distinct notes on the Expand view's pads (scale_range takes the scale from them): the current scale over its four octaves
  * (two for Chromatic), relative to C; the router adds the root note on playback. */
 static unsigned expand_notes(void *keyboard_view, uint8_t *notes)
 {
@@ -107,6 +111,32 @@ static unsigned expand_notes(void *keyboard_view, uint8_t *notes)
     return count;
 }
 
+/* The notes a note Mutate may move to: the scale's notes from the start of the octave
+ * holding the pattern's lowest note to the end of the octave holding its highest. Notes
+ * are relative to the root, so octaves start at the root. Sorted; 0 when no note. */
+static unsigned scale_range(void *keyboard_view, const struct step *steps, uint8_t *notes)
+{
+    uint8_t pads[EXPAND_PADS];
+    unsigned pad_count = expand_notes(keyboard_view, pads);
+    unsigned classes = 0, lo = 127, hi = 0;
+    for (unsigned i = 0; i < pad_count; i++)
+        classes |= 1u << (pads[i] % 12);
+    for (unsigned i = 0; i < 16; i++)
+        if (steps[i].note) {
+            if (steps[i].note < lo)
+                lo = steps[i].note;
+            if (steps[i].note > hi)
+                hi = steps[i].note;
+        }
+    unsigned count = 0;
+    if (hi < lo)
+        return 0;
+    for (unsigned note = lo / 12 * 12; note <= hi / 12 * 12 + 11 && note < 128; note++)
+        if (note && (classes & (1u << (note % 12))))
+            notes[count++] = note;
+    return count;
+}
+
 /* Index of the pad level nearest to value (glide and velocity pads). */
 static unsigned pad_index(unsigned value)
 {
@@ -116,6 +146,18 @@ static unsigned pad_index(unsigned value)
             (pad_levels[best] > value ? pad_levels[best] - value : value - pad_levels[best]))
             best = i;
     return best;
+}
+
+/* Whether Mutate changes this step. On the Osc tracks a step is a note. A Mod Seq step
+ * can hold a level without a note (it lights and plays that level): levels change only
+ * where there is one, notes and gates only on notes, glide on either. */
+static int step_used(const struct step *step, unsigned track, unsigned subview)
+{
+    if (track == MOD_SEQ && subview == SUBVIEW_VELOCITY)
+        return step->velocity != 0;
+    if (track == MOD_SEQ && subview == SUBVIEW_GLIDE)
+        return step->note || step->velocity;
+    return step->note != 0;
 }
 
 /* #60: move one step's field a little from where it is. */
@@ -250,7 +292,7 @@ static unsigned nudge_param(const struct param_rule *rule, unsigned value)
 
 /* CCM (docs/hardware.md "Free RAM"): not cleared at boot, so it carries a magic word.
  * Clear of transpose (0x10000000) and drive (0x10000400). */
-#define STATE_MAGIC     0x544e5252u /* "RRNT": changes with the layout */
+#define STATE_MAGIC     0x544e5253u /* "SRNT": changes with the layout */
 struct state {
     uint32_t magic;
     uint8_t gliding;
@@ -258,7 +300,7 @@ struct state {
     uint32_t glide_ms;
     void *held_ui;              /* Shift + Mutate held: repeat on this ui, else 0 */
     uint32_t next_repeat;       /* patch Mutate: next repeat */
-    uint8_t looped[2];          /* step Mutates: Osc track started a new pass of its pattern */
+    uint8_t looped;             /* step Mutates: a bit per track that started a new pass */
     void *sink;                 /* param sink of the glide */
     uint8_t active[RULES];      /* param still gliding: no knob has moved it */
     uint8_t from[RULES], to[RULES], last[RULES];
@@ -399,34 +441,63 @@ static int mutate_patch(void *ui)
     return 1;
 }
 
-/* Returns 1 when it handled the button, 0 to leave it to the stock handler. */
-static int mutate_field(void *ui)
+/* The tracks our step Mutate acts on in the active view, a bit each, and the field it
+ * changes; 0 when the view has no Mutate of ours. */
+static unsigned field_tracks(void *ui, unsigned *subview)
 {
     void *mode_view = FIELD(ui, UI_MODE_VIEW, void *);
     if (FIELD(ui, UI_ACTIVE_VIEW, void *) != mode_view)
         return 0;
     unsigned track = FIELD(mode_view, MV_TRACK, uint8_t);
-    unsigned subview = FIELD(mode_view, MV_SUBVIEW, uint8_t);
-    if (track > 1 || subview < SUBVIEW_VELOCITY ||
-        (subview > SUBVIEW_GLIDE && subview != SUBVIEW_EXPAND))
-        return 0;
-    /* Byte 2 is the subview of the packed view id: stock ignores Mutate in the Expand
-     * view (5), which hides the pattern; we handle it. */
+    unsigned view = FIELD(mode_view, MV_SUBVIEW, uint8_t);
+    /* Byte 2 is the subview of the packed view id: stock ignores Mutate in the Expand view
+     * (5), which hides the pattern, and in the dual view (6); we handle both. */
     const uint8_t *gate = cell_read(FIELD(ui, UI_MUTATE_GATE, void *));
-    if (gate[0] || (gate[2] == 5 && subview != SUBVIEW_EXPAND) || gate[2] == 6)
+    if (gate[0])
         return 0;
-    uint8_t pitches[EXPAND_PADS];
+    if (view == SUBVIEW_DUAL) {
+        /* #65: the two Osc keyboards: both tracks' notes move, as in Expand. */
+        *subview = SUBVIEW_EXPAND;
+        return 3;
+    }
+    if (track >= TRACKS || view < SUBVIEW_VELOCITY ||
+        (view > SUBVIEW_GLIDE && view != SUBVIEW_EXPAND) ||
+        (gate[2] == 5 && view != SUBVIEW_EXPAND) || gate[2] == 6)
+        return 0;
+    *subview = view;
+    return 1u << track;
+}
+
+/* The Note view's track, a bit, where stock Mutate shuffles whole steps; 0 elsewhere. */
+static unsigned shuffle_tracks(void *ui)
+{
+    void *mode_view = FIELD(ui, UI_MODE_VIEW, void *);
+    if (FIELD(ui, UI_ACTIVE_VIEW, void *) != mode_view)
+        return 0;
+    unsigned track = FIELD(mode_view, MV_TRACK, uint8_t);
+    const uint8_t *gate = cell_read(FIELD(ui, UI_MUTATE_GATE, void *));
+    if (gate[0] || gate[2] == 5 || gate[2] == 6 || track >= TRACKS ||
+        FIELD(mode_view, MV_SUBVIEW, uint8_t) != SUBVIEW_NOTE)
+        return 0;
+    return 1u << track;
+}
+
+/* Nudge one field of one track's steps; 1 when it acted. */
+static int mutate_track(void *ui, unsigned track, unsigned subview)
+{
+    void *mode_view = FIELD(ui, UI_MODE_VIEW, void *);
+    void *steps_cell = FIELD(FIELD(mode_view, MV_TRACKS + 4 * track, void *), TRACK_STEPS, void *);
+    struct step *steps = cell_value(steps_cell);
+    uint8_t pitches[128];
     unsigned pitch_count = 0;
     if (subview == SUBVIEW_EXPAND) {
-        pitch_count = expand_notes(FIELD(mode_view, MV_KEYBOARDS + 4 * track, void *), pitches);
+        pitch_count = scale_range(FIELD(mode_view, MV_KEYBOARDS + 4 * track, void *), steps, pitches);
         if (!pitch_count)
             return 0;
     }
 
     clear_view_38(ui);
 
-    void *steps_cell = FIELD(FIELD(mode_view, MV_TRACKS + 4 * track, void *), TRACK_STEPS, void *);
-    struct step *steps = cell_value(steps_cell);
     /* Gates go from 1/6 step up to the longest gate already on a note, at least one
      * step: set one long step first to allow longer gates. */
     unsigned max_gate = 6, notes = 0;
@@ -439,7 +510,7 @@ static int mutate_field(void *ui)
     if (max_gate > 96)
         max_gate = 96;
     for (unsigned i = 0; i < 16; i++)
-        if (steps[i].note)
+        if (step_used(&steps[i], track, subview))
             nudge_step(&steps[i], subview, max_gate, pitches, pitch_count);
     /* One random note keeps the longest gate, so the range doesn't shrink press by press. */
     if (subview == SUBVIEW_GATE && notes) {
@@ -455,27 +526,46 @@ static int mutate_field(void *ui)
     return 1;
 }
 
+/* The step Mutate on those of the given tracks the active view shows; 1 when it acted. */
+static int mutate_field(void *ui, unsigned tracks)
+{
+    unsigned subview;
+    tracks &= field_tracks(ui, &subview);
+    int acted = 0;
+    for (unsigned track = 0; track < TRACKS; track++)
+        if (tracks & (1u << track))
+            acted |= mutate_track(ui, track, subview);
+    return acted;
+}
+
 /* One of our Mutates, if Shift + Mutate may act and the view has one; 1 when it acted. */
 static int mutate(void *ui)
 {
-    return mutate_allowed(ui) && (mutate_patch(ui) || mutate_field(ui));
+    return mutate_allowed(ui) && (mutate_patch(ui) || mutate_field(ui, (1u << TRACKS) - 1));
 }
 
 void ui_button_event(void *ui, unsigned button)
 {
-    if (button == BUTTON_MUTATE && mutate(ui)) {
-        struct state *s = state();
-        s->held_ui = ui;
-        s->next_repeat = MILLISECONDS + beat_ms();
-        s->looped[0] = s->looped[1] = 0;
-        return;
+    if (button == BUTTON_MUTATE && mutate_allowed(ui)) {
+        /* Ours, or stock's whole-step shuffle in the Note view: both repeat while held. */
+        int ours = mutate(ui);
+        if (ours || shuffle_tracks(ui)) {
+            if (!ours)
+                stock_ui_button_event(ui, button);
+            struct state *s = state();
+            s->held_ui = ui;
+            s->next_repeat = MILLISECONDS + beat_ms();
+            s->looped = 0;
+            return;
+        }
     }
     stock_ui_button_event(ui, button);
 }
 
 /* A held Mutate repeats until Pattern Settings or Shift is let go, or the view has no
- * Mutate of ours any more (stock's whole-step shuffle never repeats): the patch once a
- * beat, the steps each time the track's pattern starts again (only while it plays). */
+ * Mutate that repeats any more: the patch once a beat, the steps (ours, or stock's
+ * whole-step shuffle in the Note view) each time the track's pattern starts again (only
+ * while it plays). */
 void stock_ui_root_button_up(void *ui, unsigned button);
 
 void ui_root_button_up(void *ui, unsigned button)
@@ -491,21 +581,28 @@ static void repeat_tick(void)
     void *ui = s->held_ui;
     if (!ui)
         return;
-    if (FIELD(ui, UI_ACTIVE_VIEW, void *) == FIELD(ui, UI_PATCH_VIEW, void *)) {
-        if ((int32_t)(MILLISECONDS - s->next_repeat) < 0)
-            return;
-        s->next_repeat = MILLISECONDS + beat_ms();
-    } else {
-        void *mode_view = FIELD(ui, UI_MODE_VIEW, void *);
-        unsigned track = FIELD(mode_view, MV_TRACK, uint8_t);
-        if (FIELD(ui, UI_ACTIVE_VIEW, void *) == mode_view && track < 2) {
-            if (!s->looped[track])
-                return;
-            s->looped[track] = 0;
-        }
-    }
-    if (!mutate(ui))
+    unsigned subview;
+    if (!mutate_allowed(ui)) {
         s->held_ui = 0;
+    } else if (FIELD(ui, UI_ACTIVE_VIEW, void *) == FIELD(ui, UI_PATCH_VIEW, void *)) {
+        if ((int32_t)(MILLISECONDS - s->next_repeat) >= 0) {
+            s->next_repeat = MILLISECONDS + beat_ms();
+            mutate_patch(ui);
+        }
+    } else if (field_tracks(ui, &subview)) {
+        /* Each track on its own loop: in the dual view the Osc tracks can differ. */
+        unsigned due = s->looped;
+        s->looped = 0;
+        if (due)
+            mutate_field(ui, due);
+    } else if (shuffle_tracks(ui)) {
+        unsigned due = s->looped & shuffle_tracks(ui);
+        s->looped = 0;
+        if (due)
+            stock_ui_button_event(ui, BUTTON_MUTATE);
+    } else {
+        s->held_ui = 0;
+    }
 }
 
 /* The clock tick moves each track a step through this; it returns 1 when the track went
@@ -519,8 +616,8 @@ int seq_step_advance(void *seq, void *pattern_cell, void *step_cell, unsigned tr
 {
     int looped = stock_seq_step_advance(seq, pattern_cell, step_cell, track, jump, dry,
                                         force_random);
-    if (looped && !(dry & 0xff) && (track & 0xff) < 2)
-        state()->looped[track & 0xff] = 1;
+    if (looped && !(dry & 0xff) && (track & 0xff) < TRACKS)
+        state()->looped |= 1u << (track & 0xff);
     return looped;
 }
 

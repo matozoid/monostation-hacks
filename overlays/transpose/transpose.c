@@ -1,5 +1,6 @@
 /* #21: live transpose of the Osc 1 and Osc 2 sequences by scale degrees. Shift + a key
- * in the Note or Expand view sets the offset, counted from the first note of that track's
+ * in the Note or Expand view sets the offset of both, a key on either keyboard of the dual
+ * Osc view that of its own track only, counted from the first note of that track's
  * pattern; the router shifts the sequencer's notes before its own scale mapping and
  * remembers each shifted note for its note-off. Loading a session resets it. While Shift is held, the reset key and the
  * current transpose key blink. */
@@ -45,7 +46,7 @@
 #define CH_SEQ_OSC1     3       /* router channels 3 and 4: sequencer, Osc 1 and Osc 2 */
 #define CH_SEQ_OSC2     4
 
-enum { SUBVIEW_NOTE = 0, SUBVIEW_EXPAND = 5 };
+enum { SUBVIEW_NOTE = 0, SUBVIEW_EXPAND = 5, SUBVIEW_DUAL = 6 };
 
 /* Notes are relative to the root (the router adds it on output). An empty pattern counts
  * from the lowest key of the lower row at the default octave (0x40). */
@@ -53,10 +54,10 @@ enum { SUBVIEW_NOTE = 0, SUBVIEW_EXPAND = 5 };
 #define NOTES           0x8c    /* notes are below this */
 
 /* CCM (docs/hardware.md "Free RAM"): not cleared at boot, so it carries a magic word. */
-#define STATE_MAGIC     0x54525351u /* "QSRT" */
+#define STATE_MAGIC     0x54525352u /* "RSRT": changes with the layout */
 struct state {
     uint32_t magic;
-    int8_t degrees;
+    int8_t degrees[2];          /* per Osc track */
     uint8_t blink_off;          /* the keys were last drawn in their stock colour */
     uint32_t blink_start;       /* MILLISECONDS when the blink restarted, lit */
     uint8_t playing[2][NOTES];  /* per Osc track: sequencer note -> note sent, 0 = none */
@@ -100,8 +101,9 @@ void router_note_on(void *router, unsigned note, unsigned velocity, unsigned cha
     if ((channel == CH_SEQ_OSC1 || channel == CH_SEQ_OSC2) && note < NOTES) {
         struct state *s = state();
         unsigned sent = note;
-        if (s->degrees)
-            sent = transpose(FIELD(router, ROUTER_SCALE, uint8_t *), note, s->degrees);
+        int degrees = s->degrees[channel - CH_SEQ_OSC1];
+        if (degrees)
+            sent = transpose(FIELD(router, ROUTER_SCALE, uint8_t *), note, degrees);
         s->playing[channel - CH_SEQ_OSC1][note] = sent;
         note = sent;
     }
@@ -180,19 +182,37 @@ static int shift_held(void *ui)
     return *(uint8_t *)cell_read(FIELD(FIELD(ui, UI_SHIFT, void *), 0x10, void *));
 }
 
-/* The keyboard view when the Note or Expand view of Osc 1 or Osc 2 is up, else 0. */
-static void *osc_keyboard(void *ui, void **mode_view, unsigned *track)
+/* The Osc keyboards up, a bit per track: the track's keyboard in the Note or Expand view of
+ * Osc 1 or Osc 2, both in the dual view (Osc 1 + Osc 2 pressed together); 0 for none. */
+static unsigned osc_keyboards(void *ui, void **mode_view)
 {
     if (FIELD(ui, UI_FORWARD, uint8_t))
         return 0;
     *mode_view = FIELD(ui, UI_MODE_VIEW, void *);
     if (FIELD(ui, UI_ACTIVE_VIEW, void *) != *mode_view)
         return 0;
-    *track = FIELD(*mode_view, MV_TRACK, uint8_t);
+    unsigned track = FIELD(*mode_view, MV_TRACK, uint8_t);
     unsigned subview = FIELD(*mode_view, MV_SUBVIEW, uint8_t);
-    if (*track > 1 || (subview != SUBVIEW_NOTE && subview != SUBVIEW_EXPAND))
+    if (subview == SUBVIEW_DUAL)
+        return 3;
+    if (track > 1 || (subview != SUBVIEW_NOTE && subview != SUBVIEW_EXPAND))
         return 0;
-    return FIELD(*mode_view, MV_KEYBOARDS + 4 * *track, void *);
+    return 1u << track;
+}
+
+static void *keyboard(void *mode_view, unsigned track)
+{
+    return FIELD(mode_view, MV_KEYBOARDS + 4 * track, void *);
+}
+
+/* The Osc track whose keyboard this is, if it is up; -1 otherwise. */
+static int keyboard_track(void *ui, void **mode_view, void *keyboard_view)
+{
+    unsigned tracks = osc_keyboards(ui, mode_view);
+    for (unsigned track = 0; track < 2; track++)
+        if ((tracks & (1u << track)) && keyboard(*mode_view, track) == keyboard_view)
+            return track;
+    return -1;
 }
 
 static unsigned blink_off(void)
@@ -205,15 +225,15 @@ static unsigned blink_off(void)
 static void highlighted_keys(void *keyboard_view, unsigned *reset, unsigned *target)
 {
     void *ui = UI_GLOBAL, *mode_view;
-    unsigned track;
-    if (!ui || osc_keyboard(ui, &mode_view, &track) != keyboard_view || !shift_held(ui))
+    int track;
+    if (!ui || !shift_held(ui) || (track = keyboard_track(ui, &mode_view, keyboard_view)) < 0)
         return;
     struct state *s = state();
     s->blink_off = blink_off();
     if (s->blink_off)
         return;
     const uint8_t *table = FIELD(keyboard_view, KV_LAYOUT, uint8_t *) + LAYOUT_NOTES;
-    int degrees = s->degrees;
+    int degrees = s->degrees[track];
     *reset = reference_note(mode_view, track);
     *target = degrees ? key_at_degrees(table, *reset, degrees) : 0;
 }
@@ -254,11 +274,18 @@ static void redraw_keys(void *keyboard_view)
         render_key(keyboard_view, i, reset, target);
 }
 
+static void redraw_keyboards(void *mode_view, unsigned tracks)
+{
+    for (unsigned track = 0; track < 2; track++)
+        if (tracks & (1u << track))
+            redraw_keys(keyboard(mode_view, track));
+}
+
 /* Restarts the blink lit, so a change shows at once. */
-static void restart_blink(void *keyboard_view)
+static void restart_blink(void *mode_view, unsigned tracks)
 {
     state()->blink_start = MILLISECONDS;
-    redraw_keys(keyboard_view);
+    redraw_keyboards(mode_view, tracks);
 }
 
 /* Shift's LED: also repaint the keyboard when Shift goes down or up. */
@@ -266,29 +293,27 @@ void flag_led_render_thunk(void *subscriber)
 {
     stock_flag_led_render_thunk(subscriber);
     void *ui = UI_GLOBAL, *mode_view;
-    unsigned track;
     if (!ui || (char *)subscriber - SHIFT_SUBSCRIBER != FIELD(ui, UI_SHIFT, void *))
         return;
-    void *keyboard_view = osc_keyboard(ui, &mode_view, &track);
-    if (keyboard_view)
-        restart_blink(keyboard_view);
+    unsigned tracks = osc_keyboards(ui, &mode_view);
+    if (tracks)
+        restart_blink(mode_view, tracks);
 }
 
 /* Each LED frame: repaint the keyboard when the blink turns on or off. */
 int led_frame_compose(void *leds, unsigned frame, void *ui)
 {
     void *mode_view;
-    unsigned track;
-    void *keyboard_view = osc_keyboard(ui, &mode_view, &track);
-    if (keyboard_view && shift_held(ui) && blink_off() != state()->blink_off)
-        redraw_keys(keyboard_view);
+    unsigned tracks = osc_keyboards(ui, &mode_view);
+    if (tracks && shift_held(ui) && blink_off() != state()->blink_off)
+        redraw_keyboards(mode_view, tracks);
     return stock_led_frame_compose(leds, frame, ui);
 }
 
 /* A session finished loading from flash: its patterns start untransposed. */
 void session_ctl_on_save_done(unsigned r0, unsigned r1, unsigned r2, void *session_ctl)
 {
-    state()->degrees = 0;
+    state()->degrees[0] = state()->degrees[1] = 0;
     stock_session_ctl_on_save_done(r0, r1, r2, session_ctl);
 }
 
@@ -296,20 +321,31 @@ void session_ctl_on_save_done(unsigned r0, unsigned r1, unsigned r2, void *sessi
 static int set_transpose(void *ui, unsigned pad)
 {
     void *mode_view;
-    unsigned track;
-    void *keyboard_view = osc_keyboard(ui, &mode_view, &track);
-    if (!keyboard_view || !shift_held(ui))
+    unsigned tracks = osc_keyboards(ui, &mode_view);
+    if (!tracks || !shift_held(ui))
         return 0;
-    /* Only keys: in the Note view the lower pads go to the step view. */
-    if (mode_view_target(mode_view, pad) != keyboard_view)
+    /* Only keys: in the Note view the lower pads go to the step view. In the dual view the
+     * key's keyboard picks the track, which is transposed on its own; in the other views
+     * both Osc tracks move together. */
+    void *keyboard_view = mode_view_target(mode_view, pad);
+    int track = keyboard_track(ui, &mode_view, keyboard_view);
+    if (track < 0)
         return 0;
+    /* mode_view_press hands pads 16..31 to an override view as 0..15 (the dual view's
+     * Osc 2 keyboard): the keyboard counts its keys from there. */
+    if (pad > 15 && mode_view_has_override(mode_view))
+        pad -= 16;
     const uint8_t *table = FIELD(keyboard_view, KV_LAYOUT, uint8_t *) + LAYOUT_NOTES;
     unsigned note = table[keyboard_pad_to_note(keyboard_view, pad)];
     if (!note)
         return 0;
-    state()->degrees = degrees_from(table, reference_note(mode_view, track), note);
+    int degrees = degrees_from(table, reference_note(mode_view, track), note);
+    struct state *s = state();
+    s->degrees[track] = degrees;
+    if (tracks != 3)
+        s->degrees[!track] = degrees;
     FIELD(ui, UI_PAD_TOUCHED, uint8_t) = 1;
-    restart_blink(keyboard_view);
+    restart_blink(mode_view, tracks);
     return 1;
 }
 

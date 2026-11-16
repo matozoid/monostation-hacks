@@ -35,19 +35,25 @@ and everything else stay as they are.
 | Velocity | Velocity | moves velocities up or down by a pad level or a few |
 | Gate | Gate | makes notes a little longer or shorter, up to the longest gate already in the pattern; one note keeps that longest gate, so the range holds press after press |
 | Glide | Shift + Gate | moves glide amounts a little and now and then switches glide on or off |
-| Expand | Shift + Note | moves notes to nearby notes on the 32 Expand pads: the current scale and root over four octaves (two for Chromatic) |
+| Expand | Shift + Note | moves notes to nearby notes of the current scale, within the octaves the pattern already uses: from the start of the octave of its lowest note to the end of the octave of its highest (octaves counted from the root) |
+| Dual Osc | Osc 1 + Osc 2 together | moves the notes of both Osc tracks, as in Expand (#65) |
+| Mod Seq level | Velocity, on the Mod Seq track | moves levels up or down by a pad, on the steps that have a level (#66) |
 
 Every press moves each note one step (#60); press again to wander further. Keep Shift +
 Pattern Settings held while the pattern plays and Mutate repeats each time the pattern
-starts again, so every pass is a little different until you let go.
+starts again, so every pass is a little different until you let go. In the dual view
+each Osc track repeats on its own loop.
 
 Tips:
 
 - If no note is longer than one step, gates go up to one step. For longer gates, first
   make one note as long as you want the maximum to be.
 - In Expand view the pattern is hidden: listen, or press Note to see the new notes.
-- Works on the Osc 1 and Osc 2 tracks. In the Note and Pattern Settings views, and on the
-  Mod Seq track, Mutate behaves as stock.
+- Works on all three tracks; the Mod Seq track's Gate, Glide and Expand views work as on
+  the Osc tracks (Glide also on steps with only a level).
+- In the Note view Mutate shuffles whole steps as stock, but held while playing it now
+  repeats too, each time the pattern starts again. In the Pattern Settings view it does
+  nothing, as stock.
 
 ## Feature: patch randomiser (#45)
 
@@ -88,10 +94,12 @@ The patch randomiser is part of the Mutate mod above (`overlays/randomise`).
 
 Transpose the playing sequence from the keys, the way many monosynth sequencers do.
 
-1. Open the Note view (or Expand: Shift + Note) of Osc 1 or Osc 2.
+1. Open the Note view (or Expand: Shift + Note) of Osc 1 or Osc 2, or the dual view
+   (Osc 1 + Osc 2 together).
 2. Hold **Shift** and tap a key. The key doesn't sound; both Osc tracks now play their
    patterns moved by that many scale degrees, counted from the first note of the
-   track's pattern.
+   track's pattern. In the dual view each keyboard transposes only its own track, so
+   Osc 1 and Osc 2 can be moved apart; the Note and Expand views move both together.
 3. Hold Shift and tap the key of the pattern's first note to go back.
 
 While you hold Shift, the key of the pattern's first note blinks cyan, and the key

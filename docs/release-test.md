@@ -30,13 +30,18 @@ Shift + Pattern Settings is Mutate. Use an Osc 1 pattern with notes on about hal
 - [ ] Velocity view: one press changes every note's velocity a little; the rhythm stays.
 - [ ] Gate view: gates move a little; one note keeps the longest gate; nothing goes past it.
 - [ ] Glide view: glide amounts move; some steps switch glide on or off.
-- [ ] Expand view: notes move to nearby notes of the scale, never off the scale.
+- [ ] Expand view: notes move to nearby notes of the scale, never off the scale, and stay between the start of the lowest note's octave and the end of the highest note's octave.
 - [ ] The same on the Osc 2 track.
-- [ ] Note view and the mod-seq track: Mutate is stock (shuffles whole steps).
+- [ ] Mod Seq track (#66), with some steps that have only a level: Velocity (level) view moves levels, never to none; Gate and Expand change only steps with a note; Glide changes steps with a note or a level.
+- [ ] Dual view (#65, Osc 1 + Osc 2 together): notes of both Osc tracks move to nearby scale notes.
+- [ ] Note view: Mutate is stock (shuffles whole steps), on every track.
 - [ ] Empty steps stay empty in every view.
 - [ ] Playing, hold Shift + Pattern Settings: Mutate repeats once per pattern loop, as the pattern starts again; letting go of either button stops it.
 - [ ] Stopped, hold it: one Mutate only.
-- [ ] Holding it in the Note view shuffles once only (stock).
+- [ ] Dual view, Osc 1 and Osc 2 patterns of different lengths, held: each track changes when its own pattern starts again.
+- [ ] Mod Seq Level view, held while playing: repeats once per Mod Seq loop.
+- [ ] Note view, every track, held while playing: the stock whole-step shuffle repeats once per loop; stopped, once only.
+- [ ] Pattern Settings view: Mutate does nothing (stock).
 
 ## Patch randomiser (#45, #60)
 
@@ -54,6 +59,7 @@ Shift + Pattern Settings is Mutate. Use an Osc 1 pattern with notes on about hal
 - [ ] Note view, Osc 1, playing: Shift + key transposes both Osc tracks by scale degrees; the key doesn't sound.
 - [ ] While Shift is held the reset key blinks cyan, the current key red.
 - [ ] Tapping the first note's key resets.
+- [ ] Dual view (Osc 1 + Osc 2): Shift + a key on one keyboard transposes only that track, the other keeps its transpose; each keyboard blinks its own reset and current key. Back in the Note view, Shift + key sets both again.
 - [ ] Loading a session resets the transpose.
 - [ ] No hanging notes when transposing while notes play.
 
