@@ -1,0 +1,11 @@
+# #20 Pattern chain sequences (Circuit 1.7): while stopped, hold Shift in the Patterns view
+# and tap patterns or chains to build a sequence per track (32 units, a chain counts 2);
+# it plays in order and loops. A plain tap drops it. Shift + Patterns toggles Append
+# (off at power-on): Shift + tap then adds to the end, also while playing. Saved in the
+# session. Shift + Patterns needs overlays/randomise, whose ui_button_event calls
+# sequences_button.
+base = 800
+version = 751
+sources = ["sequences.c"]
+replace = ["patterns_view_pad_down", "patterns_view_chain_leds", "transport_on_tick_cell",
+           "seq_set_clock", "mono_leds_compose"]

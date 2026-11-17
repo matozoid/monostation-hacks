@@ -544,8 +544,13 @@ static int mutate(void *ui)
     return mutate_allowed(ui) && (mutate_patch(ui) || mutate_field(ui, (1u << TRACKS) - 1));
 }
 
+/* overlays/sequences, when it is in the build: Shift + Patterns. */
+extern int sequences_button(void *ui, unsigned button) __attribute__((weak));
+
 void ui_button_event(void *ui, unsigned button)
 {
+    if (sequences_button && sequences_button(ui, button))
+        return;
     if (button == BUTTON_MUTATE && mutate_allowed(ui)) {
         /* Ours, or stock's whole-step shuffle in the Note view: both repeat while held. */
         int ours = mutate(ui);

@@ -125,7 +125,7 @@ Sequencer fields:
 | `+0x4C` | chain cell, per track: byte 0 = first pattern, byte 1 = last pattern of the chain |
 | `+0x50` | position valid flag |
 
-`FUN_0801B698(seq, track)` computes the absolute position from the clock (used after Start/SPP/chain edits; `docs/session-format.md`). `FUN_0801B880(seq)` calls it for tracks 0–2; `FUN_0801B8B8(seq, clock)` sets the clock and recomputes.
+`FUN_0801B698(seq, track)` computes the absolute position from the clock (used after Start/SPP/chain edits; `docs/session-format.md`). `FUN_0801B880(seq)` calls it for tracks 0–2; `FUN_0801B8B8(seq, clock)` sets the clock and recomputes. Start (`0x08016C5E`, transport event `[0]`) sets the transport cell's playing field and commits it, then calls `seq_set_clock(seq, 0)`; Song Position calls it with 6 × the MIDI position. Stop (`0x08016D1C`) only clears playing (and recording) and leaves the position alone, so the next Start begins again at the chain's first pattern. `overlays/sequences` hooks `seq_set_clock` for that reason: at clock 0 every pattern sequence starts over.
 
 ### Step advance `FUN_0801BA36(seq, pattern_cell, step_cell, track, jump, dry, force_random)`
 

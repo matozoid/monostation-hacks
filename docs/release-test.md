@@ -13,7 +13,7 @@ Build:
 
 ```
 python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/rel \
-    --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version N
+    --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --overlay overlays/sequences --version N
 python3 tools/fwsrc.py build build/rel build/rel/fw.bin
 python3 tools/bin2syx.py build/rel/fw.bin private/firmware/mods-N.syx --version N
 ```

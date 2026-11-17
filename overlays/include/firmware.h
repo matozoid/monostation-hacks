@@ -17,6 +17,7 @@ void stock_main(void);              /* main: init, then the soft-timer main loop
 
 /* Cells (docs/source-map.md "Cells"): double-buffered values with subscribers. */
 void *cell_read(void *cell);        /* front buffer */
+void *cell_read_other(void *cell);  /* front buffer, field 2 */
 void *cell_value(void *cell);       /* word 0 of the front buffer: a pointer for array cells */
 void *cell_write_field0(void *cell); /* back buffer, field 0, marked dirty */
 void cell_sync(void *cell);         /* copy front into back, mark every field dirty */
@@ -70,6 +71,38 @@ void router_note_on(void *router, unsigned note, unsigned velocity, unsigned cha
 void stock_router_note_on(void *router, unsigned note, unsigned velocity, unsigned channel);
 void router_note_off(void *router, unsigned note, unsigned channel);
 void stock_router_note_off(void *router, unsigned note, unsigned channel);
+
+/* Field n of a multi-field cell (4 bytes each): cell_write marks it dirty and returns the
+ * back buffer (copied from the front first); cell_write_indexed returns it to read. */
+void *cell_write(void *cell, unsigned field);
+void *cell_write_indexed(void *cell, unsigned field);
+
+/* Patterns view (docs/sequencer.md "Pattern chains"). */
+void patterns_view_pad_down(void *view, unsigned pad, unsigned velocity);
+void stock_patterns_view_pad_down(void *view, unsigned pad, unsigned velocity);
+void patterns_view_chain_leds(void *view, unsigned track);
+void stock_patterns_view_chain_leds(void *view, unsigned track);
+uint8_t patterns_pad_bit(unsigned pad);     /* pad -> pattern index of its track */
+/* One LED state bit of a pattern pad; kind 0 = in the chain, 1 = outside it, 3 = playing,
+ * 5 = held. */
+void pattern_pad_bit_set(void *view, unsigned track, unsigned pattern, unsigned kind,
+                         unsigned on);
+void step_leds_render(void *view, unsigned track);
+
+/* Transport (docs/sequencer.md): the clock tick and chain cell observer, the song
+ * position of one track from the clock and its chain, and setting the clock (then every
+ * track's position). */
+void transport_on_tick_cell(void *seq, void *cell);
+void stock_transport_on_tick_cell(void *seq, void *cell);
+void seq_track_position(void *seq, unsigned track);
+void stock_seq_track_position(void *seq, unsigned track);
+void seq_set_clock(void *seq, unsigned clock);
+void stock_seq_set_clock(void *seq, unsigned clock);
+
+/* Each LED frame (from led_frame_compose): gathers the views' colour indices into the
+ * 82-byte RGB LED buffer (one byte per LED, docs/inventory.md "LED map"). */
+void mono_leds_compose(void *ui, uint8_t *colours);
+void stock_mono_leds_compose(void *ui, uint8_t *colours);
 
 void *memcpy(void *dst, const void *src, size_t n);
 void *memset(void *dst, int c, size_t n);

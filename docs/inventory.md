@@ -270,6 +270,7 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 | `overlays/randomise` | #13 per-field Mutate (gate, glide, velocity, pitch), #45 patch randomiser (Mutate in the Patches view: a medium random step from the current patch, gliding over 500 ms) and #60 mild Mutate (steps move one step from where they are, the patch a bit more) |
 | `overlays/transpose` | #21 live transpose of the Osc sequences by scale degrees |
 | `overlays/drive` | stronger Overdrive and Distortion (×3 swing, the overdrive CV `0x20003378` swept to 400, every driven distortion stage at full swing; types 1 and 3 remapped to reach the DAC's end at full Level); factors fixed, the tuning SysEx `7C` is gone |
+| `overlays/sequences` | #20 pattern chain sequences per track (Shift + pattern taps while stopped; Shift + Patterns = Append), saved in the session |
 | `overlays/ledtest` | SysEx `7D` lights chosen LED output channels and blanks the rest (for `tools/ledmap.py`) |
 | `tools/ctllog.py` | turns on the stock debug reports and logs or maps control ids |
 | `tools/ledmap.py` | steps through every LED channel with `overlays/ledtest` and records what lights |

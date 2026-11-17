@@ -115,6 +115,22 @@ Overdrive and Distortion go further than stock: turned up, they clip harder and 
 three distortion types differ more. At 0 they sound as stock. This mod is
 `overlays/drive`.
 
+## Feature: pattern sequences (#20)
+
+Play patterns in any order, like the Circuit's Pattern Chain Sequences.
+
+1. Stop playback and open the Patterns view.
+2. Hold **Shift** and tap patterns in the order they should play. Hold one pattern and
+   tap another to add a chain; the same pattern may come back. Each track has its own
+   sequence: up to 32 units, where a single pattern counts 1 and a chain 2.
+3. Let go of Shift: the sequence's patterns light up. Press Play: each track plays its
+   sequence and loops.
+
+A plain tap on a pattern drops the track's sequence. **Shift + Patterns** turns Append on
+(the Patterns button lights orange): Shift + tap then adds to the end of the sequence, also while
+playing. Append is off after power-on, so Shift + tap while playing stays the stock
+instant switch. Sequences are saved with the session. This mod is `overlays/sequences`.
+
 ## Firmware versions
 
 Firmware 1.2 is build 800 inside the firmware. Our releases have even numbers from
@@ -147,7 +163,7 @@ The [flasher page](https://matozoid.github.io/monostation-hacks/) is the easy wa
 build the modded firmware yourself (all mods; leave out an `--overlay` to drop one):
 
     python3 tools/syx2bin.py private/firmware/monostation-firmware-800.syx private/firmware/monostation-firmware-800.bin
-    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/mods --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 751
+    python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/mods --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --overlay overlays/sequences --version 751
     python3 tools/fwsrc.py build build/mods build/mods/firmware.bin
     python3 tools/bin2syx.py build/mods/firmware.bin private/firmware/mods-751.syx --version 751
 

@@ -37,6 +37,8 @@ private val BUILDS = listOf(
             "field in the Velocity, Gate, Glide and Expand views of every track, the notes of both Osc " +
             "tracks in the dual view, and the patch in the Patches " +
             "view (gliding to it); held, it repeats (steps once a loop, also the stock shuffle in the Note view; the patch once a beat). Shift + key in the Note or Expand view transposes the Osc tracks live; in the dual view each one on its own. " +
+            "Pattern sequences: while stopped, hold Shift in the Patterns view and tap patterns or chains " +
+            "to play them in that order (Shift + Patterns: Append, lit orange; adds also while playing); saved in the session. " +
             "Stronger Overdrive and Distortion.",
         "builds/mods-751.fwdiff"),
     Build("Stock firmware 1.2", "Novation's firmware, unchanged: restores the unit.", null),

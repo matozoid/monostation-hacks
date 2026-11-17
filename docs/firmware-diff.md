@@ -44,13 +44,14 @@ python3 tools/fwdiff.py make private/firmware/monostation-firmware-800.syx priva
 python3 tools/fwdiff.py show flasher/src/jsMain/resources/builds/mods-751.fwdiff
 ```
 
-`mods-751` (randomise + transpose + drive overlays): 39 ops, 129,746 bytes copied in place,
-16 bytes "moved" and 4,542 bytes of data. The data is our bytes at the hook sites plus our
-code after the image; it holds no relocated stock code. The 16 "moved" bytes are
-the image's `FF` padding, matched against a run of `FF` in stock.
+`mods-751` (randomise + transpose + drive + sequences overlays): 65 ops, 129,697 bytes
+copied in place, 20 bytes "moved" and 6,251 bytes of data. The data is our bytes at the
+hook sites plus our code after the image; it holds no relocated stock code. The "moved"
+bytes are short runs such as the image's `FF` padding that happen to match stock
+elsewhere.
 
 `mods-751.syx` is built with
-`fwsrc.py generate private/firmware/monostation-firmware-800.bin OUT --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --version 751`,
+`fwsrc.py generate private/firmware/monostation-firmware-800.bin OUT --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --overlay overlays/sequences --version 751`,
 `fwsrc.py build`, `bin2syx.py --version 751`.
 
 The page holds two diffs: the latest release and the current test build
