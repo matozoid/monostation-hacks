@@ -20,7 +20,6 @@ private val fileInput = el<HTMLInputElement>("file")
 private val fileInfo = el<HTMLElement>("file-info")
 private val buildList = el<HTMLElement>("builds")
 private val flashButton = el<HTMLButtonElement>("flash")
-private val manualBox = el<HTMLInputElement>("manual")
 private val progressBar = el<HTMLProgressElement>("progress")
 private val progressText = el<HTMLElement>("progress-text")
 private val log = el<HTMLElement>("log")
@@ -168,7 +167,7 @@ private suspend fun flash() {
         val midi = WebMidiAccess.request()
         midi.onPortChange { say("MIDI: $it") }
         say("MIDI ports: ${portPairs(midi).map { it.name }}")
-        val versions = flashFirmware(midi, fw, PageUi, FlashOptions(manual = manualBox.checked))
+        val versions = flashFirmware(midi, fw, PageUi, FlashOptions())
         say("Done: the unit runs firmware ${versions.second}.", "ok")
     } catch (e: FlashError) {
         say("Flash failed: ${e.message}", "error")
