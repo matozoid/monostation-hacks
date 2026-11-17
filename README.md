@@ -3,7 +3,7 @@
 New features for the Novation Circuit Mono Station, built on top of Novation's own
 firmware 1.2, plus the reverse-engineering tools and notes that make them possible.
 
-- **Flash the mods from your browser:** [matozoid.github.io/monostation-hacks](https://matozoid.github.io/monostation-hacks/)
+- **Flash the mods from your browser:** [meukmachine.github.io/monostation-hacks](https://meukmachine.github.io/monostation-hacks/)
   (Firefox; you choose Novation's stock firmware 1.2 file and the page builds the modded
   firmware from it).
 - **Discussion and announcements:** the Facebook group
@@ -159,7 +159,7 @@ it offers to put stock 1.2 back.
 
 ## Quick start
 
-The [flasher page](https://matozoid.github.io/monostation-hacks/) is the easy way. To
+The [flasher page](https://meukmachine.github.io/monostation-hacks/) is the easy way. To
 build the modded firmware yourself (all mods; leave out an `--overlay` to drop one):
 
     python3 tools/syx2bin.py private/firmware/monostation-firmware-800.syx private/firmware/monostation-firmware-800.bin
@@ -236,7 +236,7 @@ For modders:
   [firmware container](docs/firmware-container.md): how firmware gets onto the unit.
 - [Binary patching](docs/patching.md), [SysEx handlers](docs/sysex-handlers.md),
   [firmware map](docs/firmware-map.md).
-- [GitHub issues](https://github.com/matozoid/monostation-hacks/issues): feature work (`enhancement`) and open research (`research`).
+- [GitHub issues](https://github.com/meukmachine/monostation-hacks/issues): feature work (`enhancement`) and open research (`research`).
 
 ## Tests
 

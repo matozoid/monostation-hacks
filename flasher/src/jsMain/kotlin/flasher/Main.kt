@@ -163,7 +163,7 @@ private suspend fun flash() {
     progressBar.value = 0.0
     progressText.textContent = ""
     try {
-        if (!WebMidiAccess.isSupported) throw FlashError("this browser has no Web MIDI; use Firefox")
+        if (!WebMidiAccess.isSupported) throw FlashError("this browser has no Web MIDI")
         val fw = firmwareToSend()
         val midi = WebMidiAccess.request()
         midi.onPortChange { say("MIDI: $it") }
@@ -187,7 +187,7 @@ fun main() {
     window.addEventListener("unhandledrejection", { ev -> say("Page error: ${ev.asDynamic().reason}", "error") })
     fileInput.onchange = { loadSelected(scope) }
     flashButton.onclick = { scope.launch { flash() } }
-    if (!WebMidiAccess.isSupported) say("This browser has no Web MIDI. Use Firefox.", "error")
+    if (!WebMidiAccess.isSupported) say("This browser has no Web MIDI.", "error")
     el<org.w3c.dom.HTMLAnchorElement>("stock-link").href = STOCK_800_URL
     updateButton()
     loadSelected(scope)   // a file the browser kept across a reload
