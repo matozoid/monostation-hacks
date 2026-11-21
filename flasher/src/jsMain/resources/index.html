@@ -29,7 +29,9 @@
   .patch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 12px; max-height: 320px; overflow-y: auto; font-size: 14px; }
   .patch-list label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .patch-list .slot { color: var(--muted); font-variant-numeric: tabular-nums; }
-  #place-slot { width: 4em; font: inherit; }
+  #place-slot, #splace-slot { width: 4em; font: inherit; }
+  h3 { font-size: .95rem; margin: 1rem 0 .25rem; }
+  .hint { color: var(--muted); font-size: 14px; }
   #pack-plan { color: var(--muted); font-size: 14px; }
   nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-top: 16px; }
   nav a { padding: .5rem 1rem; color: var(--muted); text-decoration: none; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; }
@@ -90,19 +92,32 @@
   </section>
 
   <section>
-    <h2>Send patches from a pack</h2>
-    <p>Choose a <code>.monostationpack</code> or a <code>.syx</code> of patches, tick the ones
-      to send and where they go. The unit restarts into its bootloader, stores them, checks
-      them and comes back by itself. Sessions aren't sent yet.</p>
+    <h2>Send a pack</h2>
+    <p>Choose a <code>.monostationpack</code> or a <code>.syx</code> of patches, tick what to
+      send and where it goes. The unit restarts into its bootloader, stores everything, reads
+      it back to check and comes back by itself.</p>
     <input type="file" id="pack-file" accept=".monostationpack,.syx">
     <div id="pack-info"></div>
     <div id="pack-patches" hidden>
+      <h3>Patches</h3>
       <p><button type="button" class="small" id="pack-all">All</button>
         <button type="button" class="small" id="pack-none">None</button></p>
       <div id="pack-list" class="patch-list"></div>
       <p><label><input type="radio" name="place" id="place-same" checked> Same slots</label><br>
         <label><input type="radio" name="place" id="place-from"> One after another from slot</label>
         <input type="number" id="place-slot" min="1" max="64" value="1"></p>
+    </div>
+    <div id="pack-sessions" hidden>
+      <h3>Sessions</h3>
+      <p><button type="button" class="small" id="session-all">All</button>
+        <button type="button" class="small" id="session-none">None</button></p>
+      <div id="session-list" class="patch-list"></div>
+      <p><label><input type="radio" name="splace" id="splace-same" checked> Same numbers</label><br>
+        <label><input type="radio" name="splace" id="splace-from"> One after another from session</label>
+        <input type="number" id="splace-slot" min="1" max="32" value="1"><br>
+        <span class="hint">INIT is the template for new sessions and only ever goes to INIT.</span></p>
+    </div>
+    <div id="pack-send-options" hidden>
       <p><label><input type="checkbox" id="pack-backup" checked> Back up the unit first</label></p>
       <div id="pack-plan"></div>
     </div>

@@ -7,7 +7,7 @@ A design for the web app at `flasher/` once it does more than flash firmware.
 | Area | Feature | Priority | Device path |
 |------|---------|----------|-------------|
 | Firmware | Flash a build (release, test build, stock 1.2) | done (#63) | bootloader, `docs/update-protocol.md` |
-| Packs | Upload a `.monostationpack`: its patches, its sessions, or both | patches: done, CLI and page (Firefox) tried on the unit; sessions next | bootloader `0x77`/`0x79` upload of slots 1–64 (`docs/session-transport.md` *Upload*), for patches and sessions |
+| Packs | Upload a `.monostationpack`: its patches, its sessions, or both | patches: done, CLI and page (Firefox) tried on the unit; sessions: done, CLI and page (Firefox) tried on the unit (session 1 and INIT, 11 s, read-back matches) | bootloader `0x77`/`0x79` upload of slots 1–64 (`docs/session-transport.md` *Upload*), for patches and sessions |
 | Packs | Single-patch `.syx` and single-session files | next | as above |
 | Packs | Back up the unit (64 patches, 32 sessions) to a `.monostationpack` | done: CLI and page (Firefox) tried on the unit (#1) | bootloader `0x78` dump: patches at `0x2000`, sessions at `0x12000` |
 | Packs | Read one session from the unit | later (#56) | bootloader `0x78` takes any start and length |
@@ -189,11 +189,18 @@ with [Read from unit] and [Send].
 
 - The upload (`flasher/.../Upload.kt` `uploadRange`) follows Components: header and first
   block at once, then one message per new flow-control counter, the trailer last, and the
-  unit's `0x7A` CRC must match. Patches: `uploadPatches` reads `0x2000`–`0xA000` (slots
+  unit's `0x7A` CRC must match. `uploadToUnit` does patches and sessions in one bootloader
+  visit. Patches: it reads `0x2000`–`0xA000` (slots
   1–64, eight whole 4 KB subsectors), merges, uploads, reads back; 7 s for 64 slots
   (2026-11-21, firmware 751). Bytes 126–511 of a slot hold leftovers on the unit (random
   data in some slots); we zero them, as Components does. Hidden slots 65–128 stay as they
-  are.
+  are. Sessions: each ticked image goes alone to `0x12000 + n × 0x16000` (22 whole
+  subsectors) and is read back. Placement as for patches: same numbers, or one after
+  another from session N (1–32); INIT (index 32, the template for new sessions) is its
+  own row and only ever goes to INIT. Unused sessions carry the `INIT` magic too.
+- With no unit on USB at all, the CLI's `--backup` and `--upload` give up after 10 s
+  (`FlashOptions.noUnitWaitMs`); a firmware flash still falls back to the button entry,
+  which recovering a broken app needs.
 - A full session dump is 2.97 MB (11,616 blocks), so the backup needs its own progress
   bar.
 - The backup (`flasher/.../Backup.kt`) reads the patches and the 33 session images in

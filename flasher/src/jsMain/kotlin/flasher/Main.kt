@@ -35,6 +35,11 @@ private val placeSame = el<HTMLInputElement>("place-same")
 private val placeFrom = el<HTMLInputElement>("place-from")
 private val placeSlot = el<HTMLInputElement>("place-slot")
 private val packBackup = el<HTMLInputElement>("pack-backup")
+private val packSessions = el<HTMLElement>("pack-sessions")
+private val sessionList = el<HTMLElement>("session-list")
+private val splaceFrom = el<HTMLInputElement>("splace-from")
+private val splaceSlot = el<HTMLInputElement>("splace-slot")
+private val packSendOptions = el<HTMLElement>("pack-send-options")
 private val packPlan = el<HTMLElement>("pack-plan")
 private val packSend = el<HTMLButtonElement>("pack-send")
 private val packProgress = el<HTMLProgressElement>("pack-progress")
@@ -77,7 +82,7 @@ private fun say(message: String, cls: String? = null) {
 private fun updateButton() {
     flashButton.disabled = busy || dropped == null || (isStock && selected == null)
     backupButton.disabled = busy || !WebMidiAccess.isSupported
-    packSend.disabled = busy || !WebMidiAccess.isSupported || plannedWrites() == null
+    packSend.disabled = busy || !WebMidiAccess.isSupported || plan() !is Plan.Ready
 }
 
 /** Show the tab named in the URL (#packs), else the last one used, else Firmware. */
@@ -107,31 +112,41 @@ private object BackupPageUi : BackupUi {
     }
 }
 
-/** The patches of the chosen pack, with their tick boxes. */
+/** The chosen pack's patches and sessions, with their tick boxes. */
 private var packPatchesLoaded: List<Patch> = emptyList()
 private val packTicks = mutableListOf<HTMLInputElement>()
+private var packSessionsLoaded: List<SessionImage> = emptyList()
+private val sessionTicks = mutableListOf<HTMLInputElement>()
 
-/** (slot, patch) pairs for the ticked patches and the chosen placement, or null (shown in pack-plan). */
-private fun plannedWrites(): List<Pair<Int, Patch>>? {
-    val ticked = packPatchesLoaded.filterIndexed { i, _ -> packTicks.getOrNull(i)?.checked == true }
-    if (ticked.isEmpty()) return null
-    val from = if (placeFrom.checked) (placeSlot.value.toIntOrNull() ?: return null) - 1 else null
-    return try { Pack.place(ticked, from) } catch (e: FlashError) { null }
+private sealed class Plan {
+    class Ready(val patches: List<Pair<Int, Patch>>, val sessions: List<Pair<Int, SessionImage>>) : Plan() {
+        val summary: String get() = listOfNotNull(
+            patches.takeIf { it.isNotEmpty() }?.let { w -> "patch slot${if (w.size > 1) "s" else ""} ${slotRanges(w.map { it.first })}" },
+            sessions.filter { it.first != Storage.INIT_SESSION }.takeIf { it.isNotEmpty() }
+                ?.let { w -> "session${if (w.size > 1) "s" else ""} ${slotRanges(w.map { it.first })}" },
+            "the INIT session".takeIf { sessions.any { it.first == Storage.INIT_SESSION } },
+        ).let { parts -> if (parts.size < 2) parts.joinToString() else parts.dropLast(1).joinToString(", ") + " and " + parts.last() }
+    }
+    class Problem(val message: String) : Plan()
+}
+
+/** What Send would write, or why it can't. */
+private fun plan(): Plan {
+    val patches = packPatchesLoaded.filterIndexed { i, _ -> packTicks.getOrNull(i)?.checked == true }
+    val sessions = packSessionsLoaded.filterIndexed { i, _ -> sessionTicks.getOrNull(i)?.checked == true }
+    if (patches.isEmpty() && sessions.isEmpty()) return Plan.Problem("Tick what to send.")
+    val from = if (placeFrom.checked) (placeSlot.value.toIntOrNull() ?: return Plan.Problem("Enter the first slot (1–64).")) - 1 else null
+    val sfrom = if (splaceFrom.checked) (splaceSlot.value.toIntOrNull() ?: return Plan.Problem("Enter the first session (1–32).")) - 1 else null
+    return try { Plan.Ready(Pack.place(patches, from), Pack.placeSessions(sessions, sfrom)) }
+           catch (e: FlashError) { Plan.Problem(e.message ?: "can't place them") }
 }
 
 private fun showPlan() {
-    val ticked = packTicks.count { it.checked }
-    val from = if (placeFrom.checked) placeSlot.value.toIntOrNull()?.minus(1) else null
-    val writes = plannedWrites()
-    packPlan.className = if (writes == null && ticked > 0) "error" else ""
-    packPlan.textContent = when {
-        packPatchesLoaded.isEmpty() -> ""
-        ticked == 0 -> "Tick the patches to send."
-        placeFrom.checked && from == null -> "Enter the first slot (1–64)."
-        writes == null -> try {
-            Pack.place(packPatchesLoaded.filterIndexed { i, _ -> packTicks[i].checked }, from); ""
-        } catch (e: FlashError) { e.message ?: "" }
-        else -> "Overwrites slot${if (writes.size > 1) "s" else ""} ${slotRanges(writes.map { it.first })} on the unit."
+    val p = plan()
+    packPlan.className = if (p is Plan.Problem && !p.message.startsWith("Tick")) "error" else ""
+    packPlan.textContent = when (p) {
+        is Plan.Ready -> "Overwrites ${p.summary} on the unit."
+        is Plan.Problem -> p.message
     }
     updateButton()
 }
@@ -150,35 +165,47 @@ private fun slotRanges(slots: List<Int>): String {
     return parts.joinToString(", ")
 }
 
+/** A ticked row: checkbox, dim number, name. */
+private fun tickRow(list: HTMLElement, ticks: MutableList<HTMLInputElement>, number: String, name: String) {
+    val label = document.createElement("label").unsafeCast<HTMLElement>()
+    val box = document.createElement("input").unsafeCast<HTMLInputElement>()
+    box.type = "checkbox"
+    box.checked = true
+    box.onchange = { showPlan() }
+    val slot = document.createElement("span")
+    slot.className = "slot"
+    slot.textContent = "$number "
+    label.title = name
+    label.append(box, slot, name)
+    list.appendChild(label)
+    ticks += box
+}
+
 private suspend fun loadPack(file: File) {
     packPatchesLoaded = emptyList()
+    packSessionsLoaded = emptyList()
     packTicks.clear()
+    sessionTicks.clear()
     packList.textContent = ""
+    sessionList.textContent = ""
     packPatches.hidden = true
+    packSessions.hidden = true
+    packSendOptions.hidden = true
     val buffer = file.asDynamic().arrayBuffer().unsafeCast<Promise<ArrayBuffer>>().await()
     try {
         val pack = Pack.read(Int8Array(buffer).unsafeCast<ByteArray>())
-        if (pack.patches.isEmpty()) throw FlashError("it holds no patches (only sessions, which the page can't send yet)")
         packPatchesLoaded = pack.patches
-        for ((i, p) in pack.patches.withIndex()) {
-            val label = document.createElement("label").unsafeCast<HTMLElement>()
-            val box = document.createElement("input").unsafeCast<HTMLInputElement>()
-            box.type = "checkbox"
-            box.checked = true
-            box.onchange = { showPlan() }
-            val slot = document.createElement("span")
-            slot.className = "slot"
-            slot.textContent = (p.slot?.let { (it + 1).toString().padStart(2, '0') } ?: "—") + " "
-            label.title = p.name
-            label.append(box, slot, p.name.ifEmpty { "(no name)" })
-            packList.appendChild(label)
-            packTicks += box
-        }
-        if (pack.patches.any { it.slot == null }) { placeFrom.checked = true }
-        packInfo.textContent = "${file.name}: ${pack.summary}" +
-            (if (pack.sessions != null) "; the sessions aren't sent yet" else "")
+        for (p in pack.patches)
+            tickRow(packList, packTicks, p.slot?.let { (it + 1).toString().padStart(2, '0') } ?: "—", p.name.ifEmpty { "(no name)" })
+        if (pack.patches.any { it.slot == null }) placeFrom.checked = true
+        packSessionsLoaded = pack.sessions
+        for (s in pack.sessions)
+            tickRow(sessionList, sessionTicks, if (s.isInit) "INIT" else (s.index + 1).toString().padStart(2, '0'), s.name.ifEmpty { "(no name)" })
+        packInfo.textContent = "${file.name}: ${pack.summary}"
         packInfo.className = "ok"
-        packPatches.hidden = false
+        packPatches.hidden = pack.patches.isEmpty()
+        packSessions.hidden = pack.sessions.isEmpty()
+        packSendOptions.hidden = false
     } catch (e: Throwable) {
         packInfo.textContent = "${file.name}: ${e.message ?: e.toString()}"
         packInfo.className = "error"
@@ -200,8 +227,8 @@ private object UploadPageUi : UploadUi, BackupUi {
 }
 
 private suspend fun sendPack() {
-    val writes = plannedWrites() ?: return
-    if (!window.confirm("Overwrite slot${if (writes.size > 1) "s" else ""} ${slotRanges(writes.map { it.first })} on the unit?")) return
+    val p = plan() as? Plan.Ready ?: return
+    if (!window.confirm("Overwrite ${p.summary} on the unit?")) return
     busy = true
     updateButton()
     log.textContent = ""
@@ -216,10 +243,10 @@ private suspend fun sendPack() {
             UploadPageUi.phase = "Backup"
             saveBackup(backupUnit(midi, UploadPageUi, FlashOptions()))
         }
-        UploadPageUi.phase = "Patches"
-        uploadPatches(midi, UploadPageUi, writes, FlashOptions())
+        UploadPageUi.phase = "Sending"
+        uploadToUnit(midi, UploadPageUi, p.patches, p.sessions, FlashOptions())
         packText.textContent = "Done"
-        say("Done: slots ${slotRanges(writes.map { it.first })} hold the new patches.", "ok")
+        say("Done: ${p.summary} written and checked.", "ok")
     } catch (e: FlashError) {
         say("Send failed: ${e.message}", "error")
     } catch (e: Throwable) {
@@ -414,6 +441,11 @@ fun main() {
     placeSame.onchange = { showPlan() }
     placeFrom.onchange = { showPlan() }
     placeSlot.oninput = { placeFrom.checked = true; showPlan() }
+    el<HTMLButtonElement>("session-all").onclick = { sessionTicks.forEach { it.checked = true }; showPlan() }
+    el<HTMLButtonElement>("session-none").onclick = { sessionTicks.forEach { it.checked = false }; showPlan() }
+    el<HTMLInputElement>("splace-same").onchange = { showPlan() }
+    splaceFrom.onchange = { showPlan() }
+    splaceSlot.oninput = { splaceFrom.checked = true; showPlan() }
     packSend.onclick = { scope.launch { sendPack() } }
     window.onhashchange = { showTab() }
     showTab()

@@ -12,11 +12,31 @@ class Patch(val slot: Int?, val data: ByteArray) {
     }
 }
 
-/** What a .monostationpack or .syx holds: patches and/or a sessions transfer (kept as is). */
-class Pack(val patches: List<Patch>, val sessions: ByteArray?) {
+/**
+ * One 90,112-byte session image (docs/session-format.md) and its index in a sessions dump:
+ * 0–31 are the sessions, 32 (Storage.INIT_SESSION) the INIT image the unit copies for a new one.
+ */
+class SessionImage(val index: Int, val data: ByteArray) {
+    init { require(data.size == Storage.SESSION_BYTES) { "a session image has ${Storage.SESSION_BYTES} bytes, not ${data.size}" } }
+
+    val isInit: Boolean get() = index == Storage.INIT_SESSION
+
+    /** Magic at 0: INIT, USER or DEMO. */
+    val kind: String get() = data.copyOfRange(0, 4).decodeToString()
+
+    /** Name at 0x20, 32 bytes, space-padded. */
+    val name: String get() = data.copyOfRange(0x20, 0x40).decodeToString().trimEnd(' ', '\u0000')
+}
+
+/** What a .monostationpack or .syx holds: patches and/or session images. */
+class Pack(val patches: List<Patch>, val sessions: List<SessionImage>) {
     val summary: String get() = listOfNotNull(
         if (patches.isEmpty()) "no patches" else "${patches.size} patches",
-        if (sessions == null) "no sessions" else "${sessions.size / Storage.SESSION_BYTES} session images",
+        when {
+            sessions.isEmpty() -> "no sessions"
+            sessions.any { it.isInit } -> "${sessions.count { !it.isInit }} sessions and the INIT session"
+            else -> "${sessions.size} sessions"
+        },
     ).joinToString(", ")
 
     companion object {
@@ -30,12 +50,16 @@ class Pack(val patches: List<Patch>, val sessions: ByteArray?) {
                         throw FlashError("bad sessions.syx: ${e.message}")
                     }
                     if (start != Storage.SESSIONS_START) throw FlashError("sessions.syx starts at 0x${start.toString(16)}, not at the sessions")
-                    stream
-                }
-                if (patches.isEmpty() && sessions == null) throw FlashError("the pack holds neither patches.syx nor sessions.syx")
+                    if (stream.size % Storage.SESSION_BYTES != 0 || stream.size > Storage.SESSIONS * Storage.SESSION_BYTES)
+                        throw FlashError("sessions.syx holds ${stream.size} bytes, not whole session images")
+                    (0 until stream.size / Storage.SESSION_BYTES).map {
+                        SessionImage(it, stream.copyOfRange(it * Storage.SESSION_BYTES, (it + 1) * Storage.SESSION_BYTES))
+                    }
+                } ?: emptyList()
+                if (patches.isEmpty() && sessions.isEmpty()) throw FlashError("the pack holds neither patches.syx nor sessions.syx")
                 return Pack(patches, sessions)
             }
-            return Pack(parsePatches(data), null)
+            return Pack(parsePatches(data), emptyList())
         }
 
         /** 136-byte Mono Station patch messages (type 0 current patch or type 1 slot); anything else is an error. */
@@ -65,19 +89,32 @@ class Pack(val patches: List<Patch>, val sessions: ByteArray?) {
          * (slot, patch) pairs to write: each to its own slot (from = null), or one after another
          * from slot `from`. Slots count from 0; the panel shows them as 1–64.
          */
-        fun place(patches: List<Patch>, from: Int?): List<Pair<Int, Patch>> {
+        fun place(patches: List<Patch>, from: Int?): List<Pair<Int, Patch>> =
+            placeSlots(patches.map { it.slot }, from, Storage.PATCH_SLOTS, "patch", "slot").zip(patches)
+
+        /**
+         * (session index, image) pairs: sessions 1–32 to their own number or one after another
+         * from `from` (0-based); the INIT image only ever to INIT.
+         */
+        fun placeSessions(sessions: List<SessionImage>, from: Int?): List<Pair<Int, SessionImage>> {
+            val (init, user) = sessions.partition { it.isInit }
+            return placeSlots(user.map { it.index }, from, Storage.USER_SESSIONS, "session", "session").zip(user) +
+                init.map { Storage.INIT_SESSION to it }
+        }
+
+        /** Target slots for items with their own slot (null = none), placed as is (from = null) or in a row from `from`. */
+        private fun placeSlots(own: List<Int?>, from: Int?, count: Int, item: String, slot: String): List<Int> {
             if (from == null) {
-                val missing = patches.count { it.slot == null }
-                if (missing > 0) throw FlashError("$missing patch(es) have no slot; choose a first slot")
-                val slots = patches.map { it.slot!! }
-                if (slots.toSet().size != slots.size) throw FlashError("the file has a slot more than once; choose a first slot")
-                slots.firstOrNull { it >= Storage.PATCH_SLOTS }?.let { throw FlashError("slot ${it + 1} is beyond slot ${Storage.PATCH_SLOTS}") }
-                return patches.map { it.slot!! to it }
+                val missing = own.count { it == null }
+                if (missing > 0) throw FlashError("$missing ${item}(s) have no $slot; choose a first $slot")
+                val slots = own.map { it!! }
+                if (slots.toSet().size != slots.size) throw FlashError("the file has a $slot more than once; choose a first $slot")
+                slots.firstOrNull { it >= count }?.let { throw FlashError("$slot ${it + 1} is beyond $slot $count") }
+                return slots
             }
-            if (from !in 0 until Storage.PATCH_SLOTS) throw FlashError("first slot must be 1–${Storage.PATCH_SLOTS}")
-            if (from + patches.size > Storage.PATCH_SLOTS)
-                throw FlashError("${patches.size} patches from slot ${from + 1} run past slot ${Storage.PATCH_SLOTS}")
-            return patches.mapIndexed { i, p -> from + i to p }
+            if (from !in 0 until count) throw FlashError("first $slot must be 1–$count")
+            if (from + own.size > count) throw FlashError("${own.size} ${item}s from $slot ${from + 1} run past $slot $count")
+            return own.indices.map { from + it }
         }
     }
 }

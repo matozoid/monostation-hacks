@@ -68,33 +68,47 @@ fun mergePatches(current: ByteArray, writes: List<Pair<Int, Patch>>): ByteArray 
 }
 
 /**
- * Store patches in slots through the bootloader: read the patch area, put the patches in,
- * write the whole area back (0x2000–0xA000, eight whole 4 KB subsectors; the hidden slots
- * 65–128 after it stay untouched), read it again to check, and leave the bootloader.
+ * Store patches and session images through the bootloader, in one visit, and leave it again.
+ * Patches: read the patch area, put the patches in, write the whole area back (0x2000–0xA000,
+ * eight whole 4 KB subsectors; the hidden slots 65–128 after it stay untouched). Sessions:
+ * each image alone at its own address (22 whole subsectors). Everything written is read
+ * back and compared.
  */
-suspend fun uploadPatches(midi: MidiAccess, ui: UploadUi, writes: List<Pair<Int, Patch>>, options: FlashOptions = FlashOptions()) {
-    if (writes.isEmpty()) return
+suspend fun uploadToUnit(
+    midi: MidiAccess,
+    ui: UploadUi,
+    patches: List<Pair<Int, Patch>>,
+    sessions: List<Pair<Int, SessionImage>>,
+    options: FlashOptions = FlashOptions(),
+) {
+    if (patches.isEmpty() && sessions.isEmpty()) return
+    val total = (if (patches.isEmpty()) 0 else 3 * Storage.PATCHES_LENGTH) + sessions.size * 2 * Storage.SESSION_BYTES
+    var done = 0
     val bl = reachBootloader(midi, ui, options)
     delay(100)
     val dev = Device.open(midi, bl)
     try {
         ui.info("bootloader port '${bl.name}'; versions (bootloader, firmware): ${dev.queryVersion()}")
-        val total = 3 * Storage.PATCHES_LENGTH
-        val current = dumpChunked(dev, Storage.PATCHES_START, Storage.PATCHES_LENGTH, 4096, ui) { ui.progress(it, total) }
-        val area = mergePatches(current, writes)
-        uploadRange(dev, Storage.PATCHES_START, area) { ui.progress(Storage.PATCHES_LENGTH + it, total) }
-        ui.info("wrote slots ${writes.joinToString(" ") { (it.first + 1).toString() }}; reading them back")
-        val back = dumpChunked(dev, Storage.PATCHES_START, Storage.PATCHES_LENGTH, 4096, ui) {
-            ui.progress(2 * Storage.PATCHES_LENGTH + it, total)
-        }
-        if (!back.contentEquals(area)) {
-            val bad = (0 until Storage.PATCH_SLOTS).filter { s ->
-                val at = s * Storage.PATCH_SLOT_BYTES
-                !back.copyOfRange(at, at + Storage.PATCH_SLOT_BYTES).contentEquals(area.copyOfRange(at, at + Storage.PATCH_SLOT_BYTES))
+        if (patches.isNotEmpty()) {
+            val current = dumpChunked(dev, Storage.PATCHES_START, Storage.PATCHES_LENGTH, 4096, ui) { ui.progress(done + it, total) }
+            done += Storage.PATCHES_LENGTH
+            val area = mergePatches(current, patches)
+            writeAndCheck(dev, ui, Storage.PATCHES_START, area, { done + it }, total) { back ->
+                val bad = (0 until Storage.PATCH_SLOTS).filter { s ->
+                    val at = s * Storage.PATCH_SLOT_BYTES
+                    !back.copyOfRange(at, at + Storage.PATCH_SLOT_BYTES).contentEquals(area.copyOfRange(at, at + Storage.PATCH_SLOT_BYTES))
+                }
+                "read-back differs in slots ${bad.joinToString(" ") { (it + 1).toString() }}"
             }
-            throw FlashError("read-back differs in slots ${bad.joinToString(" ") { (it + 1).toString() }}")
+            done += 2 * Storage.PATCHES_LENGTH
+            ui.info("patch slots ${patches.joinToString(" ") { (it.first + 1).toString() }}: written and read back")
         }
-        ui.info("read-back matches")
+        for ((index, image) in sessions) {
+            val what = sessionLabel(index)
+            writeAndCheck(dev, ui, Storage.sessionStart(index), image.data, { done + it }, total) { "read-back of $what differs" }
+            done += 2 * Storage.SESSION_BYTES
+            ui.info("$what: written and read back")
+        }
     } finally {
         dev.send(Storage.LEAVE_BOOTLOADER)
         dev.close()
@@ -102,4 +116,16 @@ suspend fun uploadPatches(midi: MidiAccess, ui: UploadUi, writes: List<Pair<Int,
     val versions = waitForApp(midi, options.port, options.rebootWaitMs)
     ui.info(if (versions != null) "back in the application, (bootloader, firmware) $versions"
             else "the unit is still in the bootloader: press Play to leave it")
+}
+
+/** "session 5", or "the INIT session". */
+fun sessionLabel(index: Int) = if (index == Storage.INIT_SESSION) "the INIT session" else "session ${index + 1}"
+
+/** Upload `data` at `start`, then dump it back and compare; `differs` words the error. */
+private suspend fun writeAndCheck(
+    dev: Device, ui: UploadUi, start: Int, data: ByteArray, at: (Int) -> Int, total: Int, differs: (ByteArray) -> String,
+) {
+    uploadRange(dev, start, data) { ui.progress(at(it), total) }
+    val back = dumpChunked(dev, start, data.size, 4096, ui) { ui.progress(at(data.size + it), total) }
+    if (!back.contentEquals(data)) throw FlashError(differs(back))
 }

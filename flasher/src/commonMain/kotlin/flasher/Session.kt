@@ -25,6 +25,11 @@ class FlashOptions(
     val bootloaderWaitMs: Long = 8_000,      // after the reboot message (Components)
     val manualWaitMs: Long = 600_000,
     val rebootWaitMs: Long = 20_000,
+    /**
+     * When set and no unit is on USB at all (neither port), wait this long for one and then
+     * fail, instead of waiting for the button entry. For actions that need a working app.
+     */
+    val noUnitWaitMs: Long? = null,
 )
 
 /**
@@ -33,7 +38,13 @@ class FlashOptions(
  */
 suspend fun reachBootloader(midi: MidiAccess, ui: DeviceUi, options: FlashOptions = FlashOptions()): PortPair {
     findPort(midi, options.port, bootloader = true, waitMs = 0)?.let { ui.info("the unit is in the bootloader already"); return it }
-    val app = findPort(midi, options.port, bootloader = false, waitMs = 0)
+    var app = findPort(midi, options.port, bootloader = false, waitMs = 0)
+    if (app == null && !options.manual && options.noUnitWaitMs != null) {
+        app = findPort(midi, options.port, bootloader = false, waitMs = options.noUnitWaitMs)
+            ?: findPort(midi, options.port, bootloader = true, waitMs = 0)?.let { return it }
+            ?: throw FlashError("no Circuit Mono Station on USB after ${options.noUnitWaitMs / 1000} s; " +
+                    "check the cable, or switch the unit off and on")
+    }
     if (app != null && !options.manual) {
         val dev = Device.open(midi, app)
         ui.info("application port '${app.name}' reports (bootloader, firmware) ${dev.queryVersion()}")

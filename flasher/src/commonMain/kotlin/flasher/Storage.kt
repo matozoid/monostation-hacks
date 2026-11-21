@@ -27,6 +27,10 @@ object Storage {
     const val SESSIONS_START = 0x12000
     const val SESSION_BYTES = 90_112
     const val SESSIONS = 33               // 32 user sessions and the INIT image, as Components dumps them
+    const val USER_SESSIONS = 32
+    const val INIT_SESSION = 32           // index of the INIT image, after the 32 sessions
+
+    fun sessionStart(index: Int) = SESSIONS_START + index * SESSION_BYTES
 
     val LEAVE_BOOTLOADER = bytes(0xF0, 0x00, 0x20, 0x29, 0x00, CMD_LEAVE_BOOTLOADER, 0xF7)
 
