@@ -8,12 +8,19 @@ interface BackupUi : DeviceUi {
     fun progress(sent: Int, total: Int)   // bytes read so far
 }
 
-/** The unit's 64 patch slots (512 bytes each, from 0x2000) and 33 session images (from 0x12000). */
-class Backup(val patches: ByteArray, val sessions: ByteArray) {
-    /** A .monostationpack as Components writes a v1 pack: patches.syx and sessions.syx. */
-    suspend fun pack(date: ZipDate): ByteArray = writeZip(listOf(
+/**
+ * The unit's 64 patch slots (512 bytes each, from 0x2000), 33 session images (from 0x12000)
+ * and the mod settings store (0x7FF000), null when it holds none.
+ */
+class Backup(val patches: ByteArray, val sessions: ByteArray, val settings: ByteArray? = null) {
+    /**
+     * A .monostationpack as Components writes a v1 pack: patches.syx and sessions.syx, plus
+     * mod-settings.bin when the unit has a store (Components reads only the first two).
+     */
+    suspend fun pack(date: ZipDate): ByteArray = writeZip(listOfNotNull(
         "patches.syx" to Storage.patchesSyx(patches),
         "sessions.syx" to Storage.encodeTransfer(sessions, Storage.SESSIONS_START),
+        settings?.let { ModSettings.PACK_FILE to it },
     ), date)
 }
 
@@ -80,7 +87,7 @@ suspend fun dumpChunked(dev: Device, start: Int, length: Int, chunk: Int, ui: De
 }
 
 /**
- * Read the unit's patches and sessions through the bootloader, then leave it again.
+ * Read the unit's patches, sessions and mod settings through the bootloader, then leave it again.
  * Read in small dumps: through the ALSA sequencer a 32 KB dump already loses blocks, and the
  * blocks carry no index, so a lost one costs the retry of one chunk.
  */
@@ -92,14 +99,17 @@ suspend fun backupUnit(midi: MidiAccess, ui: BackupUi, options: FlashOptions = F
     val backup = try {
         ui.info("bootloader port '${bl.name}'; versions (bootloader, firmware): ${dev.queryVersion()}")
         val sessionsLength = Storage.SESSIONS * Storage.SESSION_BYTES
-        val total = Storage.PATCHES_LENGTH + sessionsLength
+        val total = Storage.PATCHES_LENGTH + sessionsLength + ModSettings.STORE_BYTES
         val patches = dumpChunked(dev, Storage.PATCHES_START, Storage.PATCHES_LENGTH, chunk, ui) { ui.progress(it, total) }
         ui.info("read ${Storage.PATCH_SLOTS} patches")
         val sessions = dumpChunked(dev, Storage.SESSIONS_START, sessionsLength, chunk, ui) {
             ui.progress(Storage.PATCHES_LENGTH + it, total)
         }
         ui.info("read ${Storage.SESSIONS - 1} sessions and the INIT session")
-        Backup(patches, sessions)
+        val store = dumpModStore(dev, ui).takeIf { ModSettings.decodeStore(it) != null }
+        ui.progress(total, total)
+        ui.info(if (store != null) "read the mod settings" else "no mod settings stored")
+        Backup(patches, sessions, store)
     } finally {
         dev.send(Storage.LEAVE_BOOTLOADER)
         dev.close()

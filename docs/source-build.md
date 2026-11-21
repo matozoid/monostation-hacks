@@ -56,6 +56,7 @@ the generated tree, so features stay out of the generated source:
 | `version` | optional: the BCD version written into the image header (`0x70` reply) |
 | `sources` | `.s`, `.c` and `.cpp` files in the overlay directory |
 | `replace` | stock function names (from `src/symbols.tsv`) the overlay defines |
+| `[[setting]]` | settings the app can change (`docs/mod-settings.md`); the build then needs `overlays/settings` |
 
 **Redirect, not move.** A replaced function's stock body stays at its address, renamed
 `stock_<name>`, so an overlay can wrap it (`b.w stock_<name>` for a tail call). The name

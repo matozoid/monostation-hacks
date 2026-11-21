@@ -269,7 +269,8 @@ Detail: `docs/sequencer.md`, `docs/session-format.md`.
 | `patches/memread` | `p 0x40` op 2 also reads MCU memory (bootloader dump, `DBGMCU_IDCODE`, SRAM3) |
 | `overlays/randomise` | #13 per-field Mutate (gate, glide, velocity, pitch), #45 patch randomiser (Mutate in the Patches view: a medium random step from the current patch, gliding over 500 ms) and #60 mild Mutate (steps move one step from where they are, the patch a bit more) |
 | `overlays/transpose` | #21 live transpose of the Osc sequences by scale degrees |
-| `overlays/drive` | stronger Overdrive and Distortion (×3 swing, the overdrive CV `0x20003378` swept to 400, every driven distortion stage at full swing; types 1 and 3 remapped to reach the DAC's end at full Level); factors fixed, the tuning SysEx `7C` is gone |
+| `overlays/drive` | stronger Overdrive and Distortion (×3 swing, the overdrive CV `0x20003378` swept to 400, every driven distortion stage at full swing; types 1 and 3 remapped to reach the DAC's end at full Level); how far is set by mod settings (`0x0101` Overdrive, `0x0102`–`0x0104` Distortion per panel type, 0 = stock) |
+| `overlays/settings` | mod settings store (#68): reads the store at `0x7FF000` at boot, `mod_setting(id)`, SysEx `7C` describe/get/set (`docs/mod-settings.md`) |
 | `overlays/sequences` | #20 pattern chain sequences per track (Shift + pattern taps while stopped; Shift + Patterns = Append), saved in the session |
 | `overlays/ledtest` | SysEx `7D` lights chosen LED output channels and blanks the rest (for `tools/ledmap.py`) |
 | `tools/ctllog.py` | turns on the stock debug reports and logs or maps control ids |

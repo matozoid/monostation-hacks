@@ -28,8 +28,8 @@ class SessionImage(val index: Int, val data: ByteArray) {
     val name: String get() = data.copyOfRange(0x20, 0x40).decodeToString().trimEnd(' ', '\u0000')
 }
 
-/** What a .monostationpack or .syx holds: patches and/or session images. */
-class Pack(val patches: List<Patch>, val sessions: List<SessionImage>) {
+/** What a .monostationpack or .syx holds: patches and/or session images, and a backup's mod settings store. */
+class Pack(val patches: List<Patch>, val sessions: List<SessionImage>, val settings: ByteArray? = null) {
     val summary: String get() = listOfNotNull(
         if (patches.isEmpty()) "no patches" else "${patches.size} patches",
         when {
@@ -37,6 +37,7 @@ class Pack(val patches: List<Patch>, val sessions: List<SessionImage>) {
             sessions.any { it.isInit } -> "${sessions.count { !it.isInit }} sessions and the INIT session"
             else -> "${sessions.size} sessions"
         },
+        settings?.let { s -> ModSettings.decodeStore(s)?.size?.let { "mod settings ($it stored)" } },
     ).joinToString(", ")
 
     companion object {
@@ -56,8 +57,13 @@ class Pack(val patches: List<Patch>, val sessions: List<SessionImage>) {
                         SessionImage(it, stream.copyOfRange(it * Storage.SESSION_BYTES, (it + 1) * Storage.SESSION_BYTES))
                     }
                 } ?: emptyList()
-                if (patches.isEmpty() && sessions.isEmpty()) throw FlashError("the pack holds neither patches.syx nor sessions.syx")
-                return Pack(patches, sessions)
+                val settings = files[ModSettings.PACK_FILE]?.also {
+                    if (it.size != ModSettings.STORE_BYTES || ModSettings.decodeStore(it) == null)
+                        throw FlashError("bad ${ModSettings.PACK_FILE}: not a mod settings store")
+                }
+                if (patches.isEmpty() && sessions.isEmpty() && settings == null)
+                    throw FlashError("the pack holds neither patches.syx nor sessions.syx")
+                return Pack(patches, sessions, settings)
             }
             return Pack(parsePatches(data), emptyList())
         }

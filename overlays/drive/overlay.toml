@@ -1,11 +1,49 @@
-# Stronger Overdrive and Distortion. Overdrive stretches the part of the mixer level scale
-# that the knob adds (x3) and sweeps the overdrive CV 0x20003378 down to 400 at full knob;
-# Distortion gives every stage the type drives the full swing, so the three types stay
-# distinct; types 1 and 3 are remapped to reach the DAC's end exactly at full Level, type 2
-# is stretched x3. Every CV is clamped to the DAC range; with the knobs at 0 the sound is
-# stock. The factors are fixed in drive.c; the tuning SysEx (0x7C) of earlier builds is gone.
+# Stronger Overdrive and Distortion (#61), set from the app (mod settings, #68): an
+# Overdrive slider and one Distortion slider per panel type, 0 = stock (the default), 50 = the boost of the first drive builds, 100 = twice
+# that push. Overdrive stretches the part of the mixer level scale that the knob adds and
+# sweeps the overdrive CV 0x20003378 down towards 400 at full knob; Distortion gives every
+# stage the type drives the full swing, so the three types stay distinct; types 1 and 3
+# are remapped to reach the DAC's end exactly at full Level, type 2 is stretched. Every CV
+# is clamped to the DAC range; with a slider at 0 its part is stock. Needs
+# overlays/settings in the build.
 base = 800
 # Below 800 (firmware 1.2) and above 745 (1.1), so Components offers to restore stock 1.2.
 version = 754
 sources = ["drive.c"]
 replace = ["synth_engine_update"]
+
+[[setting]]
+id = 0x0101
+name = "Overdrive amount"
+kind = "slider"
+min = 0
+max = 100
+default = 0
+when = "live"
+
+[[setting]]
+id = 0x0102
+name = "Distortion 1 amount"
+kind = "slider"
+min = 0
+max = 100
+default = 0
+when = "live"
+
+[[setting]]
+id = 0x0103
+name = "Distortion 2 amount"
+kind = "slider"
+min = 0
+max = 100
+default = 0
+when = "live"
+
+[[setting]]
+id = 0x0104
+name = "Distortion 3 amount"
+kind = "slider"
+min = 0
+max = 100
+default = 0
+when = "live"

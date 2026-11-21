@@ -33,6 +33,8 @@ from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import modsettings
+
 LOAD_ADDRESS = 0x0800C000
 ROOT = Path(__file__).resolve().parent.parent
 LAYOUT = ROOT / "src" / "layout.tsv"
@@ -336,18 +338,18 @@ def library_pattern(obj):
     return f"*/{obj}" if obj in CRT_OBJECTS else f"*/{ST_DIR}/{obj}"
 
 
-Overlay = namedtuple("Overlay", "path base version sources replace")
+Overlay = namedtuple("Overlay", "path base version sources replace settings", defaults=((),))
 
 
 def load_overlay(directory):
     """overlays/<name>/overlay.toml: base (stock version), optional version (written to the
-    image header), sources (.s, .c and .cpp files in the directory) and replace (stock function
-    names)."""
+    image header), sources (.s, .c and .cpp files in the directory), replace (stock function
+    names) and [[setting]] tables (docs/mod-settings.md)."""
     directory = Path(directory)
     path = directory / OVERLAY_TOML
     with path.open("rb") as f:
         t = tomllib.load(f)
-    unknown = set(t) - {"base", "version", "sources", "replace"}
+    unknown = set(t) - {"base", "version", "sources", "replace", "setting"}
     if unknown:
         raise ValueError(f"{path}: unknown keys {sorted(unknown)}")
     if not isinstance(t.get("base"), int) or not t.get("sources"):
@@ -359,7 +361,21 @@ def load_overlay(directory):
         if not FILE_NAME.match(Path(src).stem) or Path(src).suffix not in OVERLAY_SUFFIXES \
                 or "/" in src:
             raise ValueError(f"{path}: source {src!r} is not a .s, .c or .cpp file in the overlay")
-    return Overlay(directory, t["base"], version, list(t["sources"]), list(t.get("replace", [])))
+    settings = modsettings.from_toml(t.get("setting", []), directory.resolve().name, path)
+    return Overlay(directory, t["base"], version, list(t["sources"]), list(t.get("replace", [])),
+                   tuple(settings))
+
+
+def overlay_settings(overlays):
+    """The settings of every overlay in the build, checked: unique ids, and the settings
+    overlay that serves them is in the build (it is when any overlay declares one)."""
+    settings = [s for ov in overlays for s in ov.settings]
+    modsettings.check(settings)
+    has_store = any(ov.path.resolve().name == modsettings.SETTINGS_OVERLAY for ov in overlays)
+    if settings and not has_store:
+        raise ValueError(f"{settings[0].group} declares settings: add --overlay "
+                         f"overlays/{modsettings.SETTINGS_OVERLAY}")
+    return settings if has_store else None
 
 
 def image_version(image):
@@ -1159,9 +1175,11 @@ def write_source(gen, outdir, overlays=()):
     outdir.mkdir(parents=True, exist_ok=True)
     for old in [p for p in outdir.glob("*") if p.suffix in OVERLAY_SUFFIXES]:  # only files an earlier run
         with old.open() as f:                                # generated or copied
-            if f.readline().rstrip("\n").startswith((GENERATED, OVERLAY_COPY, OVERLAY_COPY_C)):
+            if f.readline().rstrip("\n").startswith((GENERATED, OVERLAY_COPY, OVERLAY_COPY_C,
+                                                      modsettings.GENERATED_C)):
                 old.unlink()
     (outdir / OVERLAY_LIST).unlink(missing_ok=True)
+    (outdir / modsettings.HEADER).unlink(missing_ok=True)
     (outdir / LIBRARY_LIST).unlink(missing_ok=True)
     for name, text in gen.emit().items():
         (outdir / f"{name}.s").write_text(text)
@@ -1173,8 +1191,13 @@ def write_source(gen, outdir, overlays=()):
             head = f"{OVERLAY_COPY} {orig}\n" if src.endswith(".s") else \
                 f"{OVERLAY_COPY_C}\n#line 1 \"{orig}\"\n"     # errors name the original
             dest.write_text(head + orig.read_text())
+    settings = overlay_settings(overlays)
+    if settings is not None:            # the table and header for overlays/settings
+        (outdir / modsettings.TABLE_SOURCE).write_text(modsettings.table(settings))
+        (outdir / modsettings.HEADER).write_text(modsettings.header(settings))
     if overlays:
-        dirs = [OVERLAY_INCLUDE] + [ov.path.resolve() for ov in overlays]
+        dirs = [OVERLAY_INCLUDE] + [ov.path.resolve() for ov in overlays] \
+            + [outdir.resolve()] * (settings is not None)
         (outdir / OVERLAY_LIST).write_text(
             "".join(f"replace {name}\n" for name, _ in gen.replaced.values())
             + "".join(f"include {d}\n" for d in dirs))
@@ -1195,6 +1218,7 @@ def generate(image_path, outdir, layout_path=LAYOUT, symbols_path=SYMBOLS, fixes
              files_path=FILES, relax=False, overlays=(), version=None, classes_path=CLASSES,
              libraries_path=LIBRARIES):
     overlays = [load_overlay(d) if not isinstance(d, Overlay) else d for d in overlays]
+    overlay_settings(overlays)          # fail early on clashing ids
     gen = plan_source(image_path, layout_path, symbols_path, fixes, files_path,
                       overlays=overlays, version=version, relax=relax, classes_path=classes_path,
                       libraries_path=libraries_path)

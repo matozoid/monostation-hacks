@@ -8,6 +8,7 @@ import dev.atsushieno.ktmidi.MidiPortDetails
 import dev.atsushieno.ktmidi.OnMidiReceivedEventListener
 import kotlinx.browser.window
 import kotlinx.coroutines.await
+import kotlinx.coroutines.withTimeoutOrNull
 import org.khronos.webgl.Int8Array
 import org.khronos.webgl.Uint8Array
 import kotlin.js.Promise
@@ -99,16 +100,27 @@ class WebMidiAccess private constructor(private var access: dynamic) : MidiAcces
 
     override suspend fun openInput(portId: String): MidiInput {
         val port = access.inputs.get(portId) ?: throw FlashError("MIDI input $portId is gone")
-        (port.open() as Promise<Any>).await()
+        openPort(port)
         return WebMidiInput(WebMidiPortDetails(port))
     }
 
     override suspend fun openOutput(portId: String): MidiOutput {
         val port = access.outputs.get(portId) ?: throw FlashError("MIDI output $portId is gone")
-        (port.open() as Promise<Any>).await()
+        openPort(port)
         return WebMidiOutput(WebMidiPortDetails(port))
     }
 }
+
+/**
+ * Firefox keeps listing a port after the unit is switched off, and opening it then never
+ * settles; give up after a few seconds.
+ */
+private suspend fun openPort(port: dynamic) {
+    withTimeoutOrNull(OPEN_TIMEOUT_MS) { (port.open() as Promise<Any>).await() }
+        ?: throw FlashError("'${port.name}' doesn't open; is the unit switched on and connected?")
+}
+
+private const val OPEN_TIMEOUT_MS = 3_000L
 
 private class WebMidiPortDetails(val port: dynamic) : MidiPortDetails {
     override val id: String get() = port.id as String

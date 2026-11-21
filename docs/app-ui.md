@@ -15,7 +15,7 @@ A design for the web app at `flasher/` once it does more than flash firmware.
 | Packs | Patch editor | low | CC/NRPN per parameter (`tools/patchbank.py` `PARAMS`), type-0 current patch, type-1 slot write |
 | Packs | Sequence editor (steps, chains, automation, #20 sequences) | low | session image (`docs/session-format.md`), offline; sent with the session upload |
 | Settings | System settings record (MIDI channels, clock, …) | maybe (#53) | settings record, `docs/session-transport.md` |
-| Settings | Mod settings, tweaks and feature flags: drive amounts (#61) first, later scales #28, microtuning #40, CV #47, MIDI routing #49 | next (#68) | mod settings store, `docs/mod-settings.md` |
+| Settings | Mod settings, tweaks and feature flags: drive amounts (#61) first, later scales #28, microtuning #40, CV #47, MIDI routing #49 | built (#68): page Settings tab and CLI `--settings`, not yet tried on the unit | mod settings store, `docs/mod-settings.md` |
 
 Out of scope: sample or audio work.
 
@@ -59,7 +59,7 @@ version) / busy (what, with a progress bar). When an action needs the bootloader
 reboots into it and back by itself; the button steps appear only if no unit answers.
 
 **Tabs.** The first visit opens Firmware; afterwards the last tab is remembered. Settings
-stays hidden until it has something in it. The page keeps the name "flasher" until packs
+has the mod settings. The page keeps the name "flasher" until packs
 ship, then becomes e.g. "Mono Station tools".
 
 ### Firmware tab
@@ -147,8 +147,12 @@ Sequences (#20): Osc 1: 1–2, 3, 1–2, 4   Osc 2: …
 
 ### Settings tab
 
-Hidden for now. Later: a form for the System settings record and for mod options, each
-with [Read from unit] and [Send].
+Mod settings (`docs/mod-settings.md` *In the app*): [Read from unit] asks the running build
+to describe its settings and draws one control per setting, grouped by mod; changes go to
+the unit at once; [Save to unit] and [Reset to stock] write the store through the
+bootloader. The tab is always shown, since the page can't know the build before MIDI
+access; for firmware without settings it says so. Later: the System settings record
+(#53).
 
 ## Decisions (2026-11-19)
 

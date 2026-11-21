@@ -3,8 +3,11 @@
  * 0x20003378 (written by synth_update_mixer) and the distortion drives (written by
  * synth_engine_update every 2 kHz tick) start at the calibrated rest value 0x20000838 and
  * fall as the drive rises. After each engine tick we compute boosted copies in CCM and
- * point the table entries at them, so the DAC never sees the stock values. */
+ * point the table entries at them, so the DAC never sees the stock values. How far is
+ * set by mod settings (#68): Overdrive, and Distortion per panel type; 0 leaves that part
+ * stock, the DAC reading the stock cells. */
 #include <firmware.h>
+#include <mod_settings.h>
 
 #define CV_REST         (*(volatile uint16_t *)0x20000838) /* calibrated, 0xfff - 2*cal[0] */
 #define CV_MAX          0xfff
@@ -17,8 +20,10 @@
 #define KNOB_MAX        127
 #define UNITY           16      /* boost factors are in sixteenths */
 
-/* Chosen by ear on the unit (2026-10-28), tuned then through a SysEx message this release
- * no longer has. Boost factors are in sixteenths. */
+/* The boost at slider value TODAY, chosen by ear on the unit (2026-10-28). A slider value
+ * a moves each CV from its stock value towards that boost by a / TODAY: 0 is stock, the
+ * slider's top (2 × TODAY) pushes twice as far. Boost factors are in sixteenths. */
+#define TODAY           50
 #define OVERDRIVE       48      /* x3 */
 #define DISTORTION      48      /* x3 */
 #define OD_FLOOR        400     /* 0x20003378 at full Overdrive */
@@ -71,6 +76,20 @@ static uint16_t stretch(uint16_t rest, uint16_t stock, uint32_t num, uint32_t de
     return cv < 0 ? 0 : cv > CV_MAX ? CV_MAX : (uint16_t)cv;
 }
 
+/* From the stock CV towards the boosted one by amount / TODAY, clamped to the DAC range. */
+static uint16_t blend(uint16_t stock, uint16_t boosted, int amount)
+{
+    int32_t cv = (int16_t)stock + ((int32_t)(int16_t)boosted - (int16_t)stock) * amount / TODAY;
+
+    return cv < 0 ? 0 : cv > CV_MAX ? CV_MAX : (uint16_t)cv;
+}
+
+/* Point a DAC table entry at our copy, or back at the stock cell when the slider is 0. */
+static void route(uint8_t entry, volatile uint16_t *ours, uint16_t *stock, int amount)
+{
+    DAC_TABLE[2 * entry] = amount > 0 ? (uint32_t)ours : (uint32_t)stock;
+}
+
 /* Types 1 and 3 drive the first stage fully, so a straight stretch reaches the bottom of
  * the DAC halfway up the Level knob. Instead map them so the bottom lands at full Level.
  * The stock swing is full·(1 - u²), u = 1 - amount/127 (synth_engine_update's curve), so
@@ -117,6 +136,8 @@ void synth_engine_update(void)
     unsigned type;
     uint16_t rest, peak, cv;
     unsigned i;
+    int od = mod_setting(SETTING_OVERDRIVE_AMOUNT);
+    int dist_amount;
 
     stock_synth_engine_update();
     rest = CV_REST;
@@ -127,18 +148,25 @@ void synth_engine_update(void)
     scale = (((knob * 0x1c00000u) >> 24) + 0x20) & 0xff;
     boosted = 32 + (scale - 32) * OVERDRIVE / UNITY;
     for (i = 0; i < MIXER_CELLS; i++) {
-        STATE.mixer[i] = stretch(rest, *mixer[i].stock, boosted, scale);
-        DAC_TABLE[2 * mixer[i].entry] = (uint32_t)&STATE.mixer[i];
+        cv = *mixer[i].stock;
+        STATE.mixer[i] = blend(cv, stretch(rest, cv, boosted, scale), od);
+        route(mixer[i].entry, &STATE.mixer[i], mixer[i].stock, od);
     }
 
     /* From the stock value at knob 0 to the floor at full knob. */
     cv = *od_cv.stock;
     if (knob <= KNOB_MAX)
-        cv = (uint16_t)((int32_t)cv + ((int32_t)OD_FLOOR - (int32_t)cv) * (int32_t)knob / KNOB_MAX);
-    STATE.od_cv = cv;
-    DAC_TABLE[2 * od_cv.entry] = (uint32_t)&STATE.od_cv;
+        STATE.od_cv = blend(cv, (uint16_t)((int32_t)cv + ((int32_t)OD_FLOOR - (int32_t)cv)
+                                           * (int32_t)knob / KNOB_MAX), od);
+    else
+        STATE.od_cv = cv;
+    route(od_cv.entry, &STATE.od_cv, od_cv.stock, od);
 
     type = synth_param_get(PARAM_DIST_TYPE);
+    /* Each panel type has its own slider. */
+    dist_amount = type == 0 ? mod_setting(SETTING_DISTORTION_1_AMOUNT)
+                : type == 1 ? mod_setting(SETTING_DISTORTION_2_AMOUNT)
+                : type == 2 ? mod_setting(SETTING_DISTORTION_3_AMOUNT) : 0;
     full = DIST_GAIN * DIST_CURVE_MAX >> 10;
     peak = rest;
     for (i = 0; i < DIST_CELLS; i++)
@@ -146,11 +174,13 @@ void synth_engine_update(void)
             peak = *dist[i].stock;
     /* Every stage the type drives gets the full swing, so the three types stay distinct. */
     for (i = 0; i < DIST_CELLS; i++) {
-        cv = *dist[i].stock;
+        uint16_t stock = *dist[i].stock;
+
+        cv = stock;
         if ((int16_t)cv < (int16_t)rest)
             cv = peak;
-        STATE.dist[i] = type == 1 ? stretch(rest, cv, DISTORTION, UNITY)
-                                  : bend(rest, cv, DIST_SHAPE, full);
-        DAC_TABLE[2 * dist[i].entry] = (uint32_t)&STATE.dist[i];
+        cv = type == 1 ? stretch(rest, cv, DISTORTION, UNITY) : bend(rest, cv, DIST_SHAPE, full);
+        STATE.dist[i] = blend(stock, cv, dist_amount);
+        route(dist[i].entry, &STATE.dist[i], dist[i].stock, dist_amount);
     }
 }

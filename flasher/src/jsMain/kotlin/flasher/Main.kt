@@ -44,7 +44,17 @@ private val packPlan = el<HTMLElement>("pack-plan")
 private val packSend = el<HTMLButtonElement>("pack-send")
 private val packProgress = el<HTMLProgressElement>("pack-progress")
 private val packText = el<HTMLElement>("pack-text")
-private val TABS = listOf("firmware", "packs")
+private val packSettings = el<HTMLElement>("pack-settings")
+private val packSettingsSend = el<HTMLInputElement>("pack-settings-send")
+private val settingsRead = el<HTMLButtonElement>("settings-read")
+private val settingsInfo = el<HTMLElement>("settings-info")
+private val settingsForm = el<HTMLElement>("settings-form")
+private val settingsActions = el<HTMLElement>("settings-actions")
+private val settingsSave = el<HTMLButtonElement>("settings-save")
+private val settingsReset = el<HTMLButtonElement>("settings-reset")
+private val settingsProgress = el<HTMLProgressElement>("settings-progress")
+private val settingsText = el<HTMLElement>("settings-text")
+private val TABS = listOf("firmware", "packs", "settings")
 
 /** What the page can flash: one of our diffs applied to stock 1.2, or a file as is. */
 private class Build(val title: String, val description: String, val diff: String?)
@@ -59,7 +69,7 @@ private val BUILDS = listOf(
             "view (gliding to it); held, it repeats (steps once a loop, also the stock shuffle in the Note view; the patch once a beat). Shift + key in the Note or Expand view transposes the Osc tracks live; in the dual view each one on its own. " +
             "Pattern sequences: while stopped, hold Shift in the Patterns view and tap patterns or chains " +
             "to play them in that order (Shift + Patterns: Append, lit orange; adds also while playing); saved in the session. " +
-            "Stronger Overdrive and Distortion.",
+            "Overdrive and per-type Distortion amounts in the Settings tab (stock until changed).",
         "builds/mods-751.fwdiff"),
     Build("Stock firmware 1.2", "Novation's firmware, unchanged: restores the unit.", null),
 )
@@ -83,6 +93,11 @@ private fun updateButton() {
     flashButton.disabled = busy || dropped == null || (isStock && selected == null)
     backupButton.disabled = busy || !WebMidiAccess.isSupported
     packSend.disabled = busy || !WebMidiAccess.isSupported || plan() !is Plan.Ready
+    settingsRead.disabled = busy || !WebMidiAccess.isSupported
+    settingsSave.disabled = busy || modState == null
+    settingsReset.disabled = busy || modState == null
+    for (c in settingControls) c.disabled = busy
+    for (c in settingSelects) c.disabled = busy
 }
 
 /** Show the tab named in the URL (#packs), else the last one used, else Firmware. */
@@ -116,15 +131,17 @@ private object BackupPageUi : BackupUi {
 private var packPatchesLoaded: List<Patch> = emptyList()
 private val packTicks = mutableListOf<HTMLInputElement>()
 private var packSessionsLoaded: List<SessionImage> = emptyList()
+private var packSettingsLoaded: ByteArray? = null
 private val sessionTicks = mutableListOf<HTMLInputElement>()
 
 private sealed class Plan {
-    class Ready(val patches: List<Pair<Int, Patch>>, val sessions: List<Pair<Int, SessionImage>>) : Plan() {
+    class Ready(val patches: List<Pair<Int, Patch>>, val sessions: List<Pair<Int, SessionImage>>, val settings: ByteArray?) : Plan() {
         val summary: String get() = listOfNotNull(
             patches.takeIf { it.isNotEmpty() }?.let { w -> "patch slot${if (w.size > 1) "s" else ""} ${slotRanges(w.map { it.first })}" },
             sessions.filter { it.first != Storage.INIT_SESSION }.takeIf { it.isNotEmpty() }
                 ?.let { w -> "session${if (w.size > 1) "s" else ""} ${slotRanges(w.map { it.first })}" },
             "the INIT session".takeIf { sessions.any { it.first == Storage.INIT_SESSION } },
+            "the mod settings".takeIf { settings != null },
         ).let { parts -> if (parts.size < 2) parts.joinToString() else parts.dropLast(1).joinToString(", ") + " and " + parts.last() }
     }
     class Problem(val message: String) : Plan()
@@ -134,10 +151,11 @@ private sealed class Plan {
 private fun plan(): Plan {
     val patches = packPatchesLoaded.filterIndexed { i, _ -> packTicks.getOrNull(i)?.checked == true }
     val sessions = packSessionsLoaded.filterIndexed { i, _ -> sessionTicks.getOrNull(i)?.checked == true }
-    if (patches.isEmpty() && sessions.isEmpty()) return Plan.Problem("Tick what to send.")
+    val settings = packSettingsLoaded?.takeIf { packSettingsSend.checked }
+    if (patches.isEmpty() && sessions.isEmpty() && settings == null) return Plan.Problem("Tick what to send.")
     val from = if (placeFrom.checked) (placeSlot.value.toIntOrNull() ?: return Plan.Problem("Enter the first slot (1–64).")) - 1 else null
     val sfrom = if (splaceFrom.checked) (splaceSlot.value.toIntOrNull() ?: return Plan.Problem("Enter the first session (1–32).")) - 1 else null
-    return try { Plan.Ready(Pack.place(patches, from), Pack.placeSessions(sessions, sfrom)) }
+    return try { Plan.Ready(Pack.place(patches, from), Pack.placeSessions(sessions, sfrom), settings) }
            catch (e: FlashError) { Plan.Problem(e.message ?: "can't place them") }
 }
 
@@ -184,6 +202,8 @@ private fun tickRow(list: HTMLElement, ticks: MutableList<HTMLInputElement>, num
 private suspend fun loadPack(file: File) {
     packPatchesLoaded = emptyList()
     packSessionsLoaded = emptyList()
+    packSettingsLoaded = null
+    packSettings.hidden = true
     packTicks.clear()
     sessionTicks.clear()
     packList.textContent = ""
@@ -205,6 +225,8 @@ private suspend fun loadPack(file: File) {
         packInfo.className = "ok"
         packPatches.hidden = pack.patches.isEmpty()
         packSessions.hidden = pack.sessions.isEmpty()
+        packSettingsLoaded = pack.settings
+        packSettings.hidden = pack.settings == null
         packSendOptions.hidden = false
     } catch (e: Throwable) {
         packInfo.textContent = "${file.name}: ${e.message ?: e.toString()}"
@@ -229,6 +251,7 @@ private object UploadPageUi : UploadUi, BackupUi {
 private suspend fun sendPack() {
     val p = plan() as? Plan.Ready ?: return
     if (!window.confirm("Overwrite ${p.summary} on the unit?")) return
+    dropSettings()
     busy = true
     updateButton()
     log.textContent = ""
@@ -244,7 +267,7 @@ private suspend fun sendPack() {
             saveBackup(backupUnit(midi, UploadPageUi, FlashOptions()))
         }
         UploadPageUi.phase = "Sending"
-        uploadToUnit(midi, UploadPageUi, p.patches, p.sessions, FlashOptions())
+        uploadToUnit(midi, UploadPageUi, p.patches, p.sessions, FlashOptions(), p.settings)
         packText.textContent = "Done"
         say("Done: ${p.summary} written and checked.", "ok")
     } catch (e: FlashError) {
@@ -281,6 +304,7 @@ private fun download(data: ByteArray, name: String) {
 }
 
 private suspend fun backup() {
+    dropSettings()
     busy = true
     updateButton()
     log.textContent = ""
@@ -397,6 +421,7 @@ private fun loadSelected(scope: kotlinx.coroutines.CoroutineScope) {
 
 private suspend fun flash() {
     if (dropped == null) return
+    dropSettings()
     busy = true
     updateButton()
     log.textContent = ""
@@ -447,10 +472,255 @@ fun main() {
     splaceFrom.onchange = { showPlan() }
     splaceSlot.oninput = { splaceFrom.checked = true; showPlan() }
     packSend.onclick = { scope.launch { sendPack() } }
+    packSettingsSend.onchange = { showPlan() }
+    settingsRead.onclick = { scope.launch { readSettings() } }
+    settingsSave.onclick = { scope.launch { saveSettings(reset = false) } }
+    settingsReset.onclick = { scope.launch { saveSettings(reset = true) } }
     window.onhashchange = { showTab() }
     showTab()
     if (!WebMidiAccess.isSupported) say("This browser has no Web MIDI.", "error")
     el<org.w3c.dom.HTMLAnchorElement>("stock-link").href = STOCK_800_URL
     updateButton()
     loadSelected(scope)   // a file the browser kept across a reload
+}
+
+/* Settings tab (docs/mod-settings.md): the running build describes its settings over 0x7C,
+ * a control change is sent at once, Save writes the store through the bootloader. */
+
+/** The open app port while the tab shows settings; closed before anything uses the bootloader. */
+private var settingsDev: Device? = null
+private var modState: ModState? = null
+private val settingControls = mutableListOf<org.w3c.dom.HTMLInputElement>()
+private val settingSelects = mutableListOf<org.w3c.dom.HTMLSelectElement>()
+
+/** Values waiting to go out; one sender at a time, the latest value wins (a dragged slider). */
+private val pendingSets = LinkedHashMap<Int, Pair<Setting, SettingValue>>()
+private var sending = false
+
+private fun closeSettings() {
+    settingsDev?.close()
+    settingsDev = null
+}
+
+/** Before the unit restarts into its bootloader for something else: the shown values go stale. */
+private fun dropSettings() {
+    closeSettings()
+    if (modState == null) return
+    modState = null
+    settingsForm.textContent = ""
+    settingsActions.hidden = true
+    settingsMessage("Read the settings again after the unit is back.")
+}
+
+private fun settingsMessage(message: String, cls: String? = null) {
+    settingsInfo.textContent = message
+    settingsInfo.className = cls ?: ""
+}
+
+private suspend fun readSettings() {
+    busy = true
+    updateButton()
+    closeSettings()
+    modState = null
+    settingsForm.textContent = ""
+    settingsActions.hidden = true
+    settingsMessage("Reading…")
+    try {
+        if (!WebMidiAccess.isSupported) throw FlashError("this browser has no Web MIDI")
+        val midi = WebMidiAccess.request()   // fresh: Firefox keeps dead ports after the unit restarts
+        val app = findPort(midi, null, bootloader = false, waitMs = 3_000)
+            ?: throw FlashError("no running Circuit Mono Station on USB; connect it and switch it on")
+        val dev = Device.open(midi, app)
+        settingsDev = dev
+        val state = readModSettings(dev)
+        if (state == null) {
+            val v = dev.queryVersion()
+            closeSettings()
+            settingsMessage(
+                if (v == null) "The unit doesn't answer on '${app.name}'. Switch it off and on, reload this page and try again."
+                else "Firmware ${v.second} has no mod settings. Flash a build with mods from the Firmware tab.")
+            return
+        }
+        modState = state
+        val firmware = dev.queryVersion()?.second
+        settingsMessage("Firmware ${firmware ?: "?"}: ${state.settings.size} settings, ${state.build.storeText}.", "ok")
+        showSettings(state)
+        settingsActions.hidden = false
+    } catch (e: FlashError) {
+        closeSettings()
+        settingsMessage("Read failed: ${e.message}", "error")
+    } catch (e: Throwable) {
+        closeSettings()
+        settingsMessage("Error: ${e.message ?: e.toString()}", "error")
+    } finally {
+        busy = false
+        updateButton()
+    }
+}
+
+private fun showSettings(state: ModState) {
+    settingsForm.textContent = ""
+    settingControls.clear()
+    settingSelects.clear()
+    val scope = MainScope()
+    for (g in state.build.groups) {
+        val box = document.createElement("div").unsafeCast<HTMLElement>()
+        box.className = "settings-group"
+        val h = document.createElement("h3")
+        h.textContent = g.replaceFirstChar { it.uppercase() }
+        box.appendChild(h)
+        for (s in state.settings.filter { it.group == g }) box.appendChild(settingRow(state, s, scope))
+        settingsForm.appendChild(box)
+    }
+}
+
+private fun settingRow(state: ModState, s: Setting, scope: kotlinx.coroutines.CoroutineScope): HTMLElement {
+    val row = document.createElement("div").unsafeCast<HTMLElement>()
+    row.className = "setting"
+    val label = document.createElement("label").unsafeCast<HTMLElement>()
+    label.textContent = s.name
+    val inputId = "setting-${s.id}"
+    label.setAttribute("for", inputId)
+    val control = document.createElement("div").unsafeCast<HTMLElement>()
+    control.className = "control"
+    val value = state.values.getValue(s.id)
+    fun change(v: SettingValue?) {
+        if (v == null) return
+        state.values[s.id] = v
+        pendingSets[s.id] = s to v
+        scope.launch { sendPending() }
+    }
+    fun input(type: String) = (document.createElement("input").unsafeCast<HTMLInputElement>()).also {
+        it.type = type
+        it.id = inputId
+        settingControls += it
+        control.appendChild(it)
+    }
+    when (s.kind) {
+        "flag" -> input("checkbox").let { box ->
+            box.checked = (value as SettingValue.Number).value != 0
+            box.onchange = { change(SettingValue.Number(if (box.checked) 1 else 0)) }
+        }
+        "slider" -> {
+            val range = input("range")
+            range.min = s.min.toString(); range.max = s.max.toString()
+            range.value = value.toString()
+            val out = document.createElement("output")
+            out.textContent = value.toString()
+            control.appendChild(out)
+            range.oninput = { out.textContent = range.value; change(s.parse(range.value)) }
+        }
+        "number" -> input("number").let { field ->
+            field.min = s.min.toString(); field.max = s.max.toString()
+            field.value = value.toString()
+            field.onchange = {
+                val v = s.parse(field.value)
+                field.setCustomValidity(if (v == null) "${s.min} to ${s.max}" else "")
+                field.reportValidity()
+                change(v)
+            }
+        }
+        "enum" -> {
+            val select = document.createElement("select").unsafeCast<org.w3c.dom.HTMLSelectElement>()
+            select.id = inputId
+            s.labels.forEachIndexed { i, l ->
+                val o = document.createElement("option").unsafeCast<org.w3c.dom.HTMLOptionElement>()
+                o.value = i.toString(); o.textContent = l
+                select.appendChild(o)
+            }
+            select.value = (value as SettingValue.Number).value.toString()
+            select.onchange = { change(s.parse(select.value)) }
+            settingSelects += select
+            control.appendChild(select)
+        }
+        else -> input("text").let { field ->
+            field.maxLength = s.max
+            field.value = (value as SettingValue.Text).text
+            field.onchange = {
+                val v = s.parse(field.value)
+                field.setCustomValidity(if (v == null) "up to ${s.max} plain characters" else "")
+                field.reportValidity()
+                change(v)
+            }
+        }
+    }
+    row.append(label, control)
+    if (s.atBoot) {
+        val hint = document.createElement("div")
+        hint.className = "hint"
+        hint.textContent = "Takes effect after Save, at the next power-on."
+        row.appendChild(hint)
+    }
+    return row
+}
+
+private suspend fun sendPending() {
+    if (sending) return
+    sending = true
+    try {
+        while (pendingSets.isNotEmpty()) {
+            val id = pendingSets.keys.first()
+            val (s, v) = pendingSets.remove(id)!!
+            val dev = settingsDev ?: throw FlashError("not connected; read the settings again")
+            when (setModSetting(dev, s, v)) {
+                ModSettings.SET_OK, ModSettings.SET_AT_BOOT -> settingsMessage("${s.name}: ${s.show(v)}. Save to keep it after power-off.")
+                ModSettings.SET_OUT_OF_RANGE -> settingsMessage("The unit refused ${s.name} = ${s.show(v)}.", "error")
+                else -> settingsMessage("The unit doesn't know ${s.name}; read the settings again.", "error")
+            }
+        }
+    } catch (e: Throwable) {
+        pendingSets.clear()
+        settingsMessage("Couldn't send the change: ${e.message ?: e.toString()}", "error")
+    } finally {
+        sending = false
+    }
+}
+
+private object SettingsPageUi : UploadUi {
+    override fun info(message: String) = say(message)
+
+    override fun progress(sent: Int, total: Int) {
+        settingsProgress.max = total.toDouble()
+        settingsProgress.value = sent.toDouble()
+    }
+
+    override fun manualEntry(appRunning: Boolean) = BackupPageUi.manualEntry(appRunning)
+}
+
+/** Save (the shown values, keeping other builds' entries) or Reset to stock (an empty store), then read again. */
+private suspend fun saveSettings(reset: Boolean) {
+    val state = modState ?: return
+    if (reset && !window.confirm("Reset every mod setting to stock? The unit restarts into its bootloader for a few seconds.")) return
+    while (sending) kotlinx.coroutines.delay(50)
+    busy = true
+    updateButton()
+    closeSettings()
+    log.textContent = ""
+    settingsProgress.value = 0.0
+    settingsText.textContent = if (reset) "Resetting…" else "Saving…"
+    var ok = false
+    try {
+        val midi = WebMidiAccess.request()   // fresh: Firefox keeps dead ports after the unit restarts
+        writeModStore(midi, SettingsPageUi, FlashOptions(noUnitWaitMs = 10_000)) { current ->
+            if (reset) ModSettings.encodeStore(emptyList()) else ModSettings.mergeStore(current, state.settings, state.values)
+        }
+        settingsText.textContent = if (reset) "Reset: everything stock." else "Saved."
+        settingsText.className = "ok"
+        ok = true
+    } catch (e: FlashError) {
+        settingsText.textContent = "Failed: ${e.message}"
+        settingsText.className = "error"
+    } catch (e: Throwable) {
+        settingsText.textContent = "Error: ${e.message ?: e.toString()}"
+        settingsText.className = "error"
+    } finally {
+        busy = false
+        updateButton()
+    }
+    if (ok) {
+        val text = settingsText.textContent
+        readSettings()
+        settingsText.textContent = text
+        settingsText.className = "ok"
+    }
 }

@@ -13,7 +13,7 @@ Build:
 
 ```
 python3 tools/fwsrc.py generate private/firmware/monostation-firmware-800.bin build/rel \
-    --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --overlay overlays/sequences --version N
+    --overlay overlays/settings --overlay overlays/randomise --overlay overlays/transpose --overlay overlays/drive --overlay overlays/sequences --version N
 python3 tools/fwsrc.py build build/rel build/rel/fw.bin
 python3 tools/bin2syx.py build/rel/fw.bin private/firmware/mods-N.syx --version N
 ```
@@ -63,11 +63,21 @@ Shift + Pattern Settings is Mutate. Use an Osc 1 pattern with notes on about hal
 - [ ] Loading a session resets the transpose.
 - [ ] No hanging notes when transposing while notes play.
 
+## Mod settings (#68)
+
+- [ ] With no store (fresh unit): the unit boots, `7C 03` answers store 0, every setting is at its default. After Reset to stock: store 1 (an empty store), every setting at its default.
+- [ ] Settings tab, Read from unit: both drive sliders listed; moving one is heard at once.
+- [ ] Stock firmware: Read from unit says it has no mod settings.
+- [ ] Save, power off and on: the values come back (`7C 03` answers store 1).
+- [ ] Patch and session saves and loads still work after a Save.
+- [ ] Back up: the pack holds `mod-settings.bin` and Components still opens it; Reset to stock, then Send the pack with its settings: the values come back.
+- [ ] CLI: `--settings --set "Overdrive amount=60" --save`, then `--settings` lists 60.
+
 ## Drive (#61)
 
-- [ ] Overdrive and Distortion at 0: the sound is stock.
-- [ ] Turned up: clearly stronger than stock; all three distortion types sound distinct.
-- [ ] `F0 00 20 29 01 61 7C 10 10 F7` does nothing (the tuning SysEx is gone).
+- [ ] Every slider at 0 (the default): Overdrive and Distortion sound stock at every knob setting.
+- [ ] Sliders at 50: as the earlier drive builds (×3); all three distortion types sound distinct. Each Distortion slider changes only its own panel type.
+- [ ] Sliders at 100: no clicks or dropouts when moving them while a note plays (distortion is already at its most around 50, by ear 2026-11-21).
 
 ## Stock behaviour
 

@@ -80,9 +80,11 @@ suspend fun uploadToUnit(
     patches: List<Pair<Int, Patch>>,
     sessions: List<Pair<Int, SessionImage>>,
     options: FlashOptions = FlashOptions(),
+    settings: ByteArray? = null,
 ) {
-    if (patches.isEmpty() && sessions.isEmpty()) return
-    val total = (if (patches.isEmpty()) 0 else 3 * Storage.PATCHES_LENGTH) + sessions.size * 2 * Storage.SESSION_BYTES
+    if (patches.isEmpty() && sessions.isEmpty() && settings == null) return
+    val total = (if (patches.isEmpty()) 0 else 3 * Storage.PATCHES_LENGTH) + sessions.size * 2 * Storage.SESSION_BYTES +
+        (if (settings == null) 0 else 2 * ModSettings.STORE_BYTES)
     var done = 0
     val bl = reachBootloader(midi, ui, options)
     delay(100)
@@ -108,6 +110,10 @@ suspend fun uploadToUnit(
             writeAndCheck(dev, ui, Storage.sessionStart(index), image.data, { done + it }, total) { "read-back of $what differs" }
             done += 2 * Storage.SESSION_BYTES
             ui.info("$what: written and read back")
+        }
+        if (settings != null) {
+            writeAndCheck(dev, ui, ModSettings.STORE_ADDRESS, settings, { done + it }, total) { "read-back of the mod settings differs" }
+            ui.info("mod settings: written and read back")
         }
     } finally {
         dev.send(Storage.LEAVE_BOOTLOADER)

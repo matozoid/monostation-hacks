@@ -1,0 +1,9 @@
+# Mod settings store (#68, docs/mod-settings.md). At boot, right after app_construct reads
+# the System Settings record, it reads the store at 0x7FF000 of the external flash into
+# SRAM3; overlays read their values with mod_setting(id). SysEx 0x7C describes the build's
+# settings (declared by the overlays' [[setting]] tables; fwsrc.py generate writes the
+# table and mod_settings.h), reads them and sets them in RAM. The app writes the store
+# through the bootloader. No store, or a damaged one, means every setting at its default.
+base = 800
+sources = ["settings.c"]
+replace = ["ext_flash_read", "sysex_dispatch"]
