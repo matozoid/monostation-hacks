@@ -9,7 +9,7 @@ A design for the web app at `flasher/` once it does more than flash firmware.
 | Firmware | Flash a build (release, test build, stock 1.2) | done (#63) | bootloader, `docs/update-protocol.md` |
 | Packs | Upload a `.monostationpack`: its patches, its sessions, or both | next | patches: type-1 slot write per patch in the app (`docs/sysex-spec.md`); sessions: bootloader `0x77`/`0x79` upload (`docs/session-transport.md` *Upload*) |
 | Packs | Single-patch `.syx` and single-session files | next | as above |
-| Packs | Back up the unit (64 patches, 32 sessions) to a `.monostationpack` | CLI works on the unit; page not tried (#1) | bootloader `0x78` dump: patches at `0x2000`, sessions at `0x12000` |
+| Packs | Back up the unit (64 patches, 32 sessions) to a `.monostationpack` | done: CLI and page (Firefox) tried on the unit (#1) | bootloader `0x78` dump: patches at `0x2000`, sessions at `0x12000` |
 | Packs | Read one session from the unit | later (#56) | bootloader `0x78` takes any start and length |
 | Packs | Slots 64–127, once the panel can reach them | later (#5, #27) | type-1 slot write (works on slot 64) |
 | Packs | Patch editor | low | CC/NRPN per parameter (`tools/patchbank.py` `PARAMS`), type-0 current patch, type-1 slot write |
