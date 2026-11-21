@@ -61,9 +61,30 @@ class RawMidiAccess : MidiAccess() {
 
     private val readers = mutableMapOf<String, Reader>()
 
-    /** A fresh device node may not be accessible yet (udev sets its permissions a moment later). */
-    private fun <T> openFile(id: String, open: (String) -> T): T =
-        try { open("/dev/snd/$id") } catch (e: IOException) { throw FlashError("can't open /dev/snd/$id: ${e.message}") }
+    /**
+     * Open /dev/snd/<id>. A fresh device node may not be accessible yet (udev sets its permissions
+     * a moment later), and while another program has the device open, open() blocks: the kernel
+     * opens it for a sequencer client too, e.g. a browser tab with MIDI access. A blocked open
+     * can't be interrupted, so it runs on a daemon thread that is left behind on timeout.
+     */
+    private fun <T : Any> openFile(id: String, open: (String) -> T): T {
+        val result = java.util.concurrent.CompletableFuture<T>()
+        Thread({
+            try { result.complete(open("/dev/snd/$id")) } catch (e: Throwable) { result.completeExceptionally(e) }
+        }, "open $id").apply { isDaemon = true }.start()
+        return try {
+            result.get(OPEN_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            throw FlashError("/dev/snd/$id is busy: another program has it open (a browser tab with MIDI access, " +
+                "a DAW, amidi…); close it and try again")
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw FlashError("can't open /dev/snd/$id: ${e.cause?.message}")
+        }
+    }
+
+    private companion object {
+        const val OPEN_TIMEOUT_MS = 3_000L
+    }
 
     override suspend fun openInput(portId: String): MidiInput {
         val port = ports().firstOrNull { it.id == portId } ?: throw FlashError("MIDI input $portId is gone")

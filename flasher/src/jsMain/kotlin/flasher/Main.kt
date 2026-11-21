@@ -27,6 +27,18 @@ private val manualHelp = el<HTMLElement>("manual-help")
 private val backupButton = el<HTMLButtonElement>("backup")
 private val backupProgress = el<HTMLProgressElement>("backup-progress")
 private val backupText = el<HTMLElement>("backup-text")
+private val packFile = el<HTMLInputElement>("pack-file")
+private val packInfo = el<HTMLElement>("pack-info")
+private val packPatches = el<HTMLElement>("pack-patches")
+private val packList = el<HTMLElement>("pack-list")
+private val placeSame = el<HTMLInputElement>("place-same")
+private val placeFrom = el<HTMLInputElement>("place-from")
+private val placeSlot = el<HTMLInputElement>("place-slot")
+private val packBackup = el<HTMLInputElement>("pack-backup")
+private val packPlan = el<HTMLElement>("pack-plan")
+private val packSend = el<HTMLButtonElement>("pack-send")
+private val packProgress = el<HTMLProgressElement>("pack-progress")
+private val packText = el<HTMLElement>("pack-text")
 private val TABS = listOf("firmware", "packs")
 
 /** What the page can flash: one of our diffs applied to stock 1.2, or a file as is. */
@@ -65,6 +77,7 @@ private fun say(message: String, cls: String? = null) {
 private fun updateButton() {
     flashButton.disabled = busy || dropped == null || (isStock && selected == null)
     backupButton.disabled = busy || !WebMidiAccess.isSupported
+    packSend.disabled = busy || !WebMidiAccess.isSupported || plannedWrites() == null
 }
 
 /** Show the tab named in the URL (#packs), else the last one used, else Firmware. */
@@ -94,6 +107,140 @@ private object BackupPageUi : BackupUi {
     }
 }
 
+/** The patches of the chosen pack, with their tick boxes. */
+private var packPatchesLoaded: List<Patch> = emptyList()
+private val packTicks = mutableListOf<HTMLInputElement>()
+
+/** (slot, patch) pairs for the ticked patches and the chosen placement, or null (shown in pack-plan). */
+private fun plannedWrites(): List<Pair<Int, Patch>>? {
+    val ticked = packPatchesLoaded.filterIndexed { i, _ -> packTicks.getOrNull(i)?.checked == true }
+    if (ticked.isEmpty()) return null
+    val from = if (placeFrom.checked) (placeSlot.value.toIntOrNull() ?: return null) - 1 else null
+    return try { Pack.place(ticked, from) } catch (e: FlashError) { null }
+}
+
+private fun showPlan() {
+    val ticked = packTicks.count { it.checked }
+    val from = if (placeFrom.checked) placeSlot.value.toIntOrNull()?.minus(1) else null
+    val writes = plannedWrites()
+    packPlan.className = if (writes == null && ticked > 0) "error" else ""
+    packPlan.textContent = when {
+        packPatchesLoaded.isEmpty() -> ""
+        ticked == 0 -> "Tick the patches to send."
+        placeFrom.checked && from == null -> "Enter the first slot (1–64)."
+        writes == null -> try {
+            Pack.place(packPatchesLoaded.filterIndexed { i, _ -> packTicks[i].checked }, from); ""
+        } catch (e: FlashError) { e.message ?: "" }
+        else -> "Overwrites slot${if (writes.size > 1) "s" else ""} ${slotRanges(writes.map { it.first })} on the unit."
+    }
+    updateButton()
+}
+
+/** 1-based slot numbers as ranges: 1–8, 12, 20–21. */
+private fun slotRanges(slots: List<Int>): String {
+    val sorted = slots.sorted()
+    val parts = mutableListOf<String>()
+    var i = 0
+    while (i < sorted.size) {
+        var j = i
+        while (j + 1 < sorted.size && sorted[j + 1] == sorted[j] + 1) j++
+        parts += if (j == i) "${sorted[i] + 1}" else "${sorted[i] + 1}–${sorted[j] + 1}"
+        i = j + 1
+    }
+    return parts.joinToString(", ")
+}
+
+private suspend fun loadPack(file: File) {
+    packPatchesLoaded = emptyList()
+    packTicks.clear()
+    packList.textContent = ""
+    packPatches.hidden = true
+    val buffer = file.asDynamic().arrayBuffer().unsafeCast<Promise<ArrayBuffer>>().await()
+    try {
+        val pack = Pack.read(Int8Array(buffer).unsafeCast<ByteArray>())
+        if (pack.patches.isEmpty()) throw FlashError("it holds no patches (only sessions, which the page can't send yet)")
+        packPatchesLoaded = pack.patches
+        for ((i, p) in pack.patches.withIndex()) {
+            val label = document.createElement("label").unsafeCast<HTMLElement>()
+            val box = document.createElement("input").unsafeCast<HTMLInputElement>()
+            box.type = "checkbox"
+            box.checked = true
+            box.onchange = { showPlan() }
+            val slot = document.createElement("span")
+            slot.className = "slot"
+            slot.textContent = (p.slot?.let { (it + 1).toString().padStart(2, '0') } ?: "—") + " "
+            label.title = p.name
+            label.append(box, slot, p.name.ifEmpty { "(no name)" })
+            packList.appendChild(label)
+            packTicks += box
+        }
+        if (pack.patches.any { it.slot == null }) { placeFrom.checked = true }
+        packInfo.textContent = "${file.name}: ${pack.summary}" +
+            (if (pack.sessions != null) "; the sessions aren't sent yet" else "")
+        packInfo.className = "ok"
+        packPatches.hidden = false
+    } catch (e: Throwable) {
+        packInfo.textContent = "${file.name}: ${e.message ?: e.toString()}"
+        packInfo.className = "error"
+    }
+    showPlan()
+}
+
+private object UploadPageUi : UploadUi, BackupUi {
+    var phase = ""
+    override fun info(message: String) = say(message)
+
+    override fun progress(sent: Int, total: Int) {
+        packProgress.max = total.toDouble()
+        packProgress.value = sent.toDouble()
+        packText.textContent = "$phase: ${sent / 1024} / ${total / 1024} KB"
+    }
+
+    override fun manualEntry(appRunning: Boolean) = BackupPageUi.manualEntry(appRunning)
+}
+
+private suspend fun sendPack() {
+    val writes = plannedWrites() ?: return
+    if (!window.confirm("Overwrite slot${if (writes.size > 1) "s" else ""} ${slotRanges(writes.map { it.first })} on the unit?")) return
+    busy = true
+    updateButton()
+    log.textContent = ""
+    packProgress.value = 0.0
+    packText.textContent = ""
+    try {
+        if (!WebMidiAccess.isSupported) throw FlashError("this browser has no Web MIDI")
+        val midi = WebMidiAccess.request()
+        midi.onPortChange { say("MIDI: $it") }
+        say("MIDI ports: ${portPairs(midi).map { it.name }}")
+        if (packBackup.checked) {
+            UploadPageUi.phase = "Backup"
+            saveBackup(backupUnit(midi, UploadPageUi, FlashOptions()))
+        }
+        UploadPageUi.phase = "Patches"
+        uploadPatches(midi, UploadPageUi, writes, FlashOptions())
+        packText.textContent = "Done"
+        say("Done: slots ${slotRanges(writes.map { it.first })} hold the new patches.", "ok")
+    } catch (e: FlashError) {
+        say("Send failed: ${e.message}", "error")
+    } catch (e: Throwable) {
+        say("Error: ${e.message ?: e.toString()}", "error")
+    } finally {
+        busy = false
+        updateButton()
+    }
+}
+
+/** Download a backup as monostation-backup-DATE.monostationpack. */
+private suspend fun saveBackup(b: Backup) {
+    val now = kotlin.js.Date()
+    val date = ZipDate(now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes())
+    val name = "monostation-backup-${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-" +
+        "${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}" +
+        "${now.getMinutes().toString().padStart(2, '0')}.monostationpack"
+    download(b.pack(date), name)
+    say("Saved the backup as $name.", "ok")
+}
+
 private fun download(data: ByteArray, name: String) {
     val blob = org.w3c.files.Blob(arrayOf(data), org.w3c.files.BlobPropertyBag(type = "application/zip"))
     val url = org.w3c.dom.url.URL.createObjectURL(blob)
@@ -117,13 +264,8 @@ private suspend fun backup() {
         val midi = WebMidiAccess.request()
         midi.onPortChange { say("MIDI: $it") }
         say("MIDI ports: ${portPairs(midi).map { it.name }}")
-        val b = backupUnit(midi, BackupPageUi, FlashOptions())
-        val now = kotlin.js.Date()
-        val date = ZipDate(now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes())
-        val name = "monostation-backup-${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-" +
-            "${now.getDate().toString().padStart(2, '0')}.monostationpack"
-        download(b.pack(date), name)
-        say("Done: saved $name.", "ok")
+        saveBackup(backupUnit(midi, BackupPageUi, FlashOptions()))
+        say("Done.", "ok")
     } catch (e: FlashError) {
         say("Backup failed: ${e.message}", "error")
     } catch (e: Throwable) {
@@ -259,6 +401,20 @@ fun main() {
     fileInput.onchange = { loadSelected(scope) }
     flashButton.onclick = { scope.launch { flash() } }
     backupButton.onclick = { scope.launch { backup() } }
+    packFile.onchange = {
+        packFile.files?.item(0)?.let { f ->
+            packInfo.textContent = "${f.name}: reading…"
+            packInfo.className = ""
+            packFile.value = ""
+            scope.launch { loadPack(f) }
+        }
+    }
+    el<HTMLButtonElement>("pack-all").onclick = { packTicks.forEach { it.checked = true }; showPlan() }
+    el<HTMLButtonElement>("pack-none").onclick = { packTicks.forEach { it.checked = false }; showPlan() }
+    placeSame.onchange = { showPlan() }
+    placeFrom.onchange = { showPlan() }
+    placeSlot.oninput = { placeFrom.checked = true; showPlan() }
+    packSend.onclick = { scope.launch { sendPack() } }
     window.onhashchange = { showTab() }
     showTab()
     if (!WebMidiAccess.isSupported) say("This browser has no Web MIDI.", "error")

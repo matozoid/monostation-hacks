@@ -25,6 +25,12 @@
   .build { display: grid; grid-template-columns: auto 1fr; column-gap: .5rem; margin: .5rem 0; cursor: pointer; }
   .build input { grid-row: span 2; margin-top: .35rem; }
   .build span { color: var(--muted); }
+  button.small { padding: .2rem .75rem; background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  .patch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 12px; max-height: 320px; overflow-y: auto; font-size: 14px; }
+  .patch-list label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .patch-list .slot { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #place-slot { width: 4em; font: inherit; }
+  #pack-plan { color: var(--muted); font-size: 14px; }
   nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-top: 16px; }
   nav a { padding: .5rem 1rem; color: var(--muted); text-decoration: none; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; }
   nav a[aria-selected="true"] { color: var(--fg); background: var(--box); border-color: var(--line); margin-bottom: -1px; }
@@ -81,6 +87,28 @@
     <p><button id="backup" disabled>Back up</button></p>
     <progress id="backup-progress" value="0" max="1"></progress>
     <div id="backup-text"></div>
+  </section>
+
+  <section>
+    <h2>Send patches from a pack</h2>
+    <p>Choose a <code>.monostationpack</code> or a <code>.syx</code> of patches, tick the ones
+      to send and where they go. The unit restarts into its bootloader, stores them, checks
+      them and comes back by itself. Sessions aren't sent yet.</p>
+    <input type="file" id="pack-file" accept=".monostationpack,.syx">
+    <div id="pack-info"></div>
+    <div id="pack-patches" hidden>
+      <p><button type="button" class="small" id="pack-all">All</button>
+        <button type="button" class="small" id="pack-none">None</button></p>
+      <div id="pack-list" class="patch-list"></div>
+      <p><label><input type="radio" name="place" id="place-same" checked> Same slots</label><br>
+        <label><input type="radio" name="place" id="place-from"> One after another from slot</label>
+        <input type="number" id="place-slot" min="1" max="64" value="1"></p>
+      <p><label><input type="checkbox" id="pack-backup" checked> Back up the unit first</label></p>
+      <div id="pack-plan"></div>
+    </div>
+    <p><button id="pack-send" disabled>Send</button></p>
+    <progress id="pack-progress" value="0" max="1"></progress>
+    <div id="pack-text"></div>
   </section>
   </div>
 

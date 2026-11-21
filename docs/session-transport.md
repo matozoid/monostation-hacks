@@ -80,6 +80,7 @@ These transfers are handled by the **bootloader**, not the app. The app's `F0 00
 - **Download:** the host sends `F0 00 20 29 00 78 <start: 8 nibbles> <length: 8 nibbles> F7` (command 120). The device answers with a `0x77` header that echoes the start and length; Components rejects any other values. The `0x79` blocks and the `0x7A` CRC trailer follow.
 - **Upload:** the host sends the `0x77` header, then one `0x79` block each time the device sends a flow-control message. That message is either `0x7B` (8-nibble counter at bytes 6–13) or `0x75` (16-bit counter at bytes 7–8); a repeated counter value is ignored. At the end the device sends `0x7A` with its own CRC-32, and the host compares it with the CRC of what it sent.
 - A patch-bank upload pads each 126-byte patch to 512 bytes (`patchLength`) before framing.
+- **Resolved (hardware): the upload works for the patch area.** `0x2000`/`0x8000` (slots 1–64) uploaded through the bootloader; the unit's `0x7A` CRC matched, and the read-back matched byte for byte, the slots after it untouched (2026-11-21, firmware 751; `flasher/.../Upload.kt`). Components sends the header and the first block together, then one message per new flow counter, its own `0x7A` last.
 
 ## Open
 

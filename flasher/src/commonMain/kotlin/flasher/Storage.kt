@@ -10,6 +10,8 @@ object Storage {
     const val CMD_DATA = 0x79
     const val CMD_TRAILER = 0x7A
     const val CMD_LEAVE_BOOTLOADER = 0x61
+    const val CMD_FLOW = 0x7B            // upload flow control, 8-nibble counter
+    const val CMD_FLOW_SHORT = 0x75      // upload flow control, 16-bit counter at bytes 7–8
 
     const val BLOCK_BYTES = 256
     const val BLOCK_SEPTETS = 293

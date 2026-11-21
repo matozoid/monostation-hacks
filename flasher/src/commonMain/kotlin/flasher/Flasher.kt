@@ -46,8 +46,15 @@ suspend fun findPort(access: MidiAccess, wanted: String?, bootloader: Boolean, w
     }
 }
 
+/** SysEx out, complete SysEx messages in: what the storage transfers need (a fake in tests). */
+interface Link {
+    fun send(msg: ByteArray)
+    suspend fun next(timeoutMs: Long): ByteArray?
+    fun drain()
+}
+
 /** One open MIDI device: SysEx out, complete SysEx messages in through a channel. */
-class Device private constructor(val name: String, private val input: MidiInput, private val output: MidiOutput) {
+class Device private constructor(val name: String, private val input: MidiInput, private val output: MidiOutput) : Link {
     private val messages = Channel<ByteArray>(Channel.UNLIMITED)
     private val assembler = SysexAssembler { messages.trySend(it) }
 
@@ -55,13 +62,13 @@ class Device private constructor(val name: String, private val input: MidiInput,
         input.setMessageReceivedListener { data, start, length, _ -> assembler.feed(data, start, length) }
     }
 
-    fun send(msg: ByteArray) = output.send(msg, 0, msg.size, 0)
+    override fun send(msg: ByteArray) = output.send(msg, 0, msg.size, 0)
 
-    suspend fun next(timeoutMs: Long): ByteArray? =
+    override suspend fun next(timeoutMs: Long): ByteArray? =
         if (timeoutMs <= 0) messages.tryReceive().getOrNull()
         else withTimeoutOrNull(timeoutMs.milliseconds) { messages.receive() }
 
-    fun drain() { while (messages.tryReceive().isSuccess) { } }
+    override fun drain() { while (messages.tryReceive().isSuccess) { } }
 
     fun close() {
         runCatching { input.close() }
