@@ -24,6 +24,10 @@ private val progressBar = el<HTMLProgressElement>("progress")
 private val progressText = el<HTMLElement>("progress-text")
 private val log = el<HTMLElement>("log")
 private val manualHelp = el<HTMLElement>("manual-help")
+private val backupButton = el<HTMLButtonElement>("backup")
+private val backupProgress = el<HTMLProgressElement>("backup-progress")
+private val backupText = el<HTMLElement>("backup-text")
+private val TABS = listOf("firmware", "packs")
 
 /** What the page can flash: one of our diffs applied to stock 1.2, or a file as is. */
 private class Build(val title: String, val description: String, val diff: String?)
@@ -60,6 +64,74 @@ private fun say(message: String, cls: String? = null) {
 
 private fun updateButton() {
     flashButton.disabled = busy || dropped == null || (isStock && selected == null)
+    backupButton.disabled = busy || !WebMidiAccess.isSupported
+}
+
+/** Show the tab named in the URL (#packs), else the last one used, else Firmware. */
+private fun showTab() {
+    val hash = window.location.hash.removePrefix("#")
+    val tab = if (hash in TABS) hash else (runCatching { window.localStorage.getItem("tab") }.getOrNull()?.takeIf { it in TABS } ?: "firmware")
+    runCatching { window.localStorage.setItem("tab", tab) }
+    for (t in TABS) {
+        el<HTMLElement>("tab-$t").hidden = t != tab
+        el<HTMLElement>("tab-link-$t").setAttribute("aria-selected", (t == tab).toString())
+    }
+}
+
+private object BackupPageUi : BackupUi {
+    override fun info(message: String) = say(message)
+
+    override fun progress(sent: Int, total: Int) {
+        backupProgress.max = total.toDouble()
+        backupProgress.value = sent.toDouble()
+        backupText.textContent = "${sent / 1024} / ${total / 1024} KB"
+    }
+
+    override fun manualEntry(appRunning: Boolean) {
+        say(if (appRunning) "The unit didn't restart into its bootloader. Switch it off, hold Scales + Note + Velocity, " +
+                "switch it on, then let go." else "No unit found; waiting for one in bootloader mode " +
+                "(switch it off, hold Scales + Note + Velocity, switch it on).")
+    }
+}
+
+private fun download(data: ByteArray, name: String) {
+    val blob = org.w3c.files.Blob(arrayOf(data), org.w3c.files.BlobPropertyBag(type = "application/zip"))
+    val url = org.w3c.dom.url.URL.createObjectURL(blob)
+    val a = document.createElement("a").unsafeCast<org.w3c.dom.HTMLAnchorElement>()
+    a.href = url
+    a.download = name
+    document.body!!.appendChild(a)
+    a.click()
+    a.remove()
+    window.setTimeout({ org.w3c.dom.url.URL.revokeObjectURL(url) }, 10_000)
+}
+
+private suspend fun backup() {
+    busy = true
+    updateButton()
+    log.textContent = ""
+    backupProgress.value = 0.0
+    backupText.textContent = ""
+    try {
+        if (!WebMidiAccess.isSupported) throw FlashError("this browser has no Web MIDI")
+        val midi = WebMidiAccess.request()
+        midi.onPortChange { say("MIDI: $it") }
+        say("MIDI ports: ${portPairs(midi).map { it.name }}")
+        val b = backupUnit(midi, BackupPageUi, FlashOptions())
+        val now = kotlin.js.Date()
+        val date = ZipDate(now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes())
+        val name = "monostation-backup-${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-" +
+            "${now.getDate().toString().padStart(2, '0')}.monostationpack"
+        download(b.pack(date), name)
+        say("Done: saved $name.", "ok")
+    } catch (e: FlashError) {
+        say("Backup failed: ${e.message}", "error")
+    } catch (e: Throwable) {
+        say("Error: ${e.message ?: e.toString()}", "error")
+    } finally {
+        busy = false
+        updateButton()
+    }
 }
 
 private object PageUi : FlashUi {
@@ -186,6 +258,9 @@ fun main() {
     window.addEventListener("unhandledrejection", { ev -> say("Page error: ${ev.asDynamic().reason}", "error") })
     fileInput.onchange = { loadSelected(scope) }
     flashButton.onclick = { scope.launch { flash() } }
+    backupButton.onclick = { scope.launch { backup() } }
+    window.onhashchange = { showTab() }
+    showTab()
     if (!WebMidiAccess.isSupported) say("This browser has no Web MIDI.", "error")
     el<org.w3c.dom.HTMLAnchorElement>("stock-link").href = STOCK_800_URL
     updateButton()

@@ -4,12 +4,16 @@ import dev.atsushieno.ktmidi.MidiAccess
 import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
 
-/** What the flash flow reports to its front end (the CLI or the web page). */
-interface FlashUi {
+/** What any device flow reports to its front end (the CLI or the web page). */
+interface DeviceUi {
     fun info(message: String)
-    fun progress(sent: Int, total: Int)
     /** Shown while waiting for the button entry (Scales + Note + Velocity at power-on). */
     fun manualEntry(appRunning: Boolean)
+}
+
+/** What the flash flow reports to its front end. */
+interface FlashUi : DeviceUi {
+    fun progress(sent: Int, total: Int)
     /** Last chance to stop before the first packet; false aborts. */
     suspend fun confirm(fw: FirmwareFile, versions: Pair<Int, Int>?): Boolean
 }
@@ -24,20 +28,19 @@ class FlashOptions(
 )
 
 /**
- * The whole update: reach the bootloader (reboot SysEx or button entry), send the packets
- * with per-packet acks, then wait for the app and check that it reports the image's version.
- * Returns the (bootloader, firmware) versions the app reports. Throws FlashError.
+ * Reboot the running app into the bootloader with SysEx (or wait for the button entry when
+ * options.manual is set or no app answers) and return the bootloader's port.
  */
-suspend fun flashFirmware(midi: MidiAccess, fw: FirmwareFile, ui: FlashUi, options: FlashOptions = FlashOptions()): Pair<Int, Int> {
+suspend fun reachBootloader(midi: MidiAccess, ui: DeviceUi, options: FlashOptions = FlashOptions()): PortPair {
+    findPort(midi, options.port, bootloader = true, waitMs = 0)?.let { ui.info("the unit is in the bootloader already"); return it }
     val app = findPort(midi, options.port, bootloader = false, waitMs = 0)
-    val bl: PortPair
     if (app != null && !options.manual) {
         val dev = Device.open(midi, app)
         ui.info("application port '${app.name}' reports (bootloader, firmware) ${dev.queryVersion()}")
         ui.info("rebooting into the bootloader")
         dev.send(Protocol.REBOOT_TO_BOOTLOADER)
         dev.close()
-        bl = findPort(midi, options.port, bootloader = true, waitMs = options.bootloaderWaitMs) ?: run {
+        return findPort(midi, options.port, bootloader = true, waitMs = options.bootloaderWaitMs) ?: run {
             // The unit may be in the bootloader while the MIDI layer hasn't shown the port yet.
             ui.info("no bootloader port after ${options.bootloaderWaitMs / 1000} s; ports now: " +
                     "${portPairs(midi).map { it.name }}. Still waiting; if the unit shows bootloader mode, " +
@@ -46,11 +49,35 @@ suspend fun flashFirmware(midi: MidiAccess, fw: FirmwareFile, ui: FlashUi, optio
             findPort(midi, options.port, bootloader = true, waitMs = options.manualWaitMs)
                 ?: throw FlashError("no bootloader port appeared")
         }
-    } else {
-        ui.manualEntry(appRunning = app != null)
-        bl = findPort(midi, options.port, bootloader = true, waitMs = options.manualWaitMs)
-            ?: throw FlashError("no bootloader port appeared")
     }
+    ui.manualEntry(appRunning = app != null)
+    return findPort(midi, options.port, bootloader = true, waitMs = options.manualWaitMs)
+        ?: throw FlashError("no bootloader port appeared")
+}
+
+/**
+ * Wait up to waitMs for the application port and return the (bootloader, firmware) versions
+ * it reports, or null.
+ */
+suspend fun waitForApp(midi: MidiAccess, port: String?, waitMs: Long): Pair<Int, Int>? {
+    val wait = TimeSource.Monotonic.markNow()
+    while (wait.elapsedNow().inWholeMilliseconds < waitMs) {
+        val p = findPort(midi, port, bootloader = false, waitMs = 1000) ?: continue
+        val d = try { Device.open(midi, p) } catch (e: FlashError) { delay(500); continue }   // port not ready yet
+        val versions = d.queryVersion()
+        d.close()
+        if (versions != null) return versions
+    }
+    return null
+}
+
+/**
+ * The whole update: reach the bootloader (reboot SysEx or button entry), send the packets
+ * with per-packet acks, then wait for the app and check that it reports the image's version.
+ * Returns the (bootloader, firmware) versions the app reports. Throws FlashError.
+ */
+suspend fun flashFirmware(midi: MidiAccess, fw: FirmwareFile, ui: FlashUi, options: FlashOptions = FlashOptions()): Pair<Int, Int> {
+    val bl = reachBootloader(midi, ui, options)
     delay(100)
     val dev = Device.open(midi, bl)
     val blVersions = dev.queryVersion()
@@ -71,19 +98,11 @@ suspend fun flashFirmware(midi: MidiAccess, fw: FirmwareFile, ui: FlashUi, optio
     }
     ui.info("sent in ${start.elapsedNow().inWholeSeconds} s; waiting for the firmware to start")
 
-    val wait = TimeSource.Monotonic.markNow()
-    while (wait.elapsedNow().inWholeMilliseconds < options.rebootWaitMs) {
-        val p = findPort(midi, options.port, bootloader = false, waitMs = 1000) ?: continue
-        val d = Device.open(midi, p)
-        val versions = d.queryVersion()
-        d.close()
-        if (versions != null) {
-            if (versions.second != fw.version)
-                throw FlashError("the application reports $versions, expected firmware ${fw.version}")
-            ui.info("OK: application port '${p.name}' reports (bootloader, firmware) $versions")
-            return versions
-        }
-    }
-    throw FlashError("the application didn't report a version within ${options.rebootWaitMs / 1000} s; " +
+    val versions = waitForApp(midi, options.port, options.rebootWaitMs)
+        ?: throw FlashError("the application didn't report a version within ${options.rebootWaitMs / 1000} s; " +
             "check the unit, or enter the bootloader and flash again")
+    if (versions.second != fw.version)
+        throw FlashError("the application reports $versions, expected firmware ${fw.version}")
+    ui.info("OK: application reports (bootloader, firmware) $versions")
+    return versions
 }

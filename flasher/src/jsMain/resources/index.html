@@ -25,6 +25,9 @@
   .build { display: grid; grid-template-columns: auto 1fr; column-gap: .5rem; margin: .5rem 0; cursor: pointer; }
   .build input { grid-row: span 2; margin-top: .35rem; }
   .build span { color: var(--muted); }
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-top: 16px; }
+  nav a { padding: .5rem 1rem; color: var(--muted); text-decoration: none; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; }
+  nav a[aria-selected="true"] { color: var(--fg); background: var(--box); border-color: var(--line); margin-bottom: -1px; }
 </style>
 </head>
 <body>
@@ -33,6 +36,12 @@
   <p>Unofficial. Flashes modified firmware over USB MIDI. The bootloader is never written, so a
     failed update can always be retried.</p>
 
+  <nav>
+    <a href="#firmware" id="tab-link-firmware">Firmware</a>
+    <a href="#packs" id="tab-link-packs">Packs</a>
+  </nav>
+
+  <div id="tab-firmware">
   <section>
     <h2>1. Stock firmware</h2>
     <p>Choose Novation's stock firmware 1.2,
@@ -61,6 +70,19 @@
     <progress id="progress" value="0" max="1"></progress>
     <div id="progress-text"></div>
   </section>
+  </div>
+
+  <div id="tab-packs" hidden>
+  <section>
+    <h2>Back up the unit</h2>
+    <p>Reads the unit's 64 patches and 32 sessions and saves them as a
+      <code>.monostationpack</code> that Components can open. The unit restarts into its
+      bootloader for this and comes back by itself; it takes a few minutes.</p>
+    <p><button id="backup" disabled>Back up</button></p>
+    <progress id="backup-progress" value="0" max="1"></progress>
+    <div id="backup-text"></div>
+  </section>
+  </div>
 
   <section>
     <h2>Log</h2>

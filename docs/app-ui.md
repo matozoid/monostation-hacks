@@ -9,7 +9,7 @@ A design for the web app at `flasher/` once it does more than flash firmware.
 | Firmware | Flash a build (release, test build, stock 1.2) | done (#63) | bootloader, `docs/update-protocol.md` |
 | Packs | Upload a `.monostationpack`: its patches, its sessions, or both | next | patches: type-1 slot write per patch in the app (`docs/sysex-spec.md`); sessions: bootloader `0x77`/`0x79` upload (`docs/session-transport.md` *Upload*) |
 | Packs | Single-patch `.syx` and single-session files | next | as above |
-| Packs | Back up the unit (64 patches, 32 sessions) to a `.monostationpack` | next (#1) | bootloader `0x78` dump: patches at `0x2000`, sessions at `0x12000` |
+| Packs | Back up the unit (64 patches, 32 sessions) to a `.monostationpack` | CLI works on the unit; page not tried (#1) | bootloader `0x78` dump: patches at `0x2000`, sessions at `0x12000` |
 | Packs | Read one session from the unit | later (#56) | bootloader `0x78` takes any start and length |
 | Packs | Slots 64–127, once the panel can reach them | later (#5, #27) | type-1 slot write (works on slot 64) |
 | Packs | Patch editor | low | CC/NRPN per parameter (`tools/patchbank.py` `PARAMS`), type-0 current patch, type-1 slot write |
@@ -182,3 +182,13 @@ with [Read from unit] and [Send].
   `tools/sessionsyx.py` has the framing but no upload. Try it on the unit first.
 - A full session dump is 2.97 MB (11,616 blocks), so the backup needs its own progress
   bar.
+- The backup (`flasher/.../Backup.kt`) reads the patches and the 33 session images in
+  `0x78` dumps of 4 KB (`--chunk` on the CLI), each retried up to 3 times: the blocks
+  carry no index, so a lost block shows up only as a short dump or a bad CRC. Through the
+  ALSA sequencer (ktmidi's `alsa` backend) even 4 KB dumps lose 1–2 of 16 blocks, so on
+  Linux the CLI backs up through ALSA rawmidi (`RawMidiAccess.kt`, `--backend raw`):
+  3 MB in about 15 s, no retries (2026-11-21, firmware 751). It writes the pack as
+  Components' v1 format: `patches.syx` (64 type-1 messages, the first 126 bytes of each
+  512-byte slot, as Components' `chunkMonostationPatches`) and `sessions.syx` (one `0x77`
+  transfer of all 33 images, as in the YBC packs). It then leaves the bootloader with
+  `0x61`; the unit comes back in the app by itself.
