@@ -15,7 +15,7 @@ A design for the web app at `flasher/` once it does more than flash firmware.
 | Packs | Patch editor | low | CC/NRPN per parameter (`tools/patchbank.py` `PARAMS`), type-0 current patch, type-1 slot write |
 | Packs | Sequence editor (steps, chains, automation, #20 sequences) | low | session image (`docs/session-format.md`), offline; sent with the session upload |
 | Settings | System settings record (MIDI channels, clock, …) | maybe (#53) | settings record, `docs/session-transport.md` |
-| Settings | Options of future mods (scales #28, microtuning #40, CV #47, MIDI routing #49) | maybe | depends on the mod |
+| Settings | Mod settings, tweaks and feature flags: drive amounts (#61) first, later scales #28, microtuning #40, CV #47, MIDI routing #49 | next (#68) | mod settings store, `docs/mod-settings.md` |
 
 Out of scope: sample or audio work.
 
